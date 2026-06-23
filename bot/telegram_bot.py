@@ -517,6 +517,9 @@ def register_handlers(app: Application, config: dict, auth_func):
             y = item.year
             overview = item.overview
             remote_poster = None # Pydantic models from LLM don't have remotePoster or images
+
+        if not remote_poster:
+            remote_poster = "https://placehold.co/600x900/png?text=No+Poster"
         
         if overview and len(overview) > 150: overview = overview[:147] + "..."
         
