@@ -1,0 +1,153 @@
+import asyncio
+import logging
+import yaml
+from telegram.ext import ApplicationBuilder, PicklePersistence
+from bot import telegram_bot
+from bot.webhook import start_webhook_server
+
+# Configure Logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
+def _by_name(items: list) -> dict:
+    """Index a list of dicts by their 'name' field."""
+    return {item['name']: item for item in items}
+
+
+async def run_telegram_bot(messenger_conf, bot_config, auth_func):
+    """Build and return the Telegram bot application"""
+    token = messenger_conf.get('token')
+    if not token:
+        logger.warning("Telegram token missing in messenger config, skipping bot startup.")
+        return None
+
+    persistence = PicklePersistence(filepath="data/telegram_bot_data.pickle")
+    app = ApplicationBuilder().token(token).persistence(persistence).build()
+    db, jellyfin_client = telegram_bot.register_handlers(app, bot_config, auth_func)
+
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    logger.info("Started polling for Telegram Bot")
+
+    return app, db, jellyfin_client
+
+
+async def main():
+    # Load Config
+    try:
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error("config.yaml not found!")
+        return
+
+    # Index named sections for quick lookup
+    messengers_map  = _by_name(config.get('messengers', []))
+    media_servers_map = _by_name(config.get('media_servers', []))
+    sonarrs_map     = _by_name(config.get('sonarrs', []))
+    radarrs_map     = _by_name(config.get('radarrs', []))
+
+    users_list = config.get('users', [])
+
+    # ── Telegram messenger ─────────────────────────────────────────────
+    # Find the first enabled telegram messenger
+    telegram_conf = next(
+        (m for m in config.get('messengers', [])
+         if m.get('type') == 'telegram' and m.get('enabled', False)),
+        None
+    )
+
+    if not telegram_conf:
+        logger.error("No enabled Telegram messenger found in config.")
+        return
+
+    messenger_name = telegram_conf['name']
+
+    # Map users whose messenger references this telegram messenger, keyed by telegram user_id
+    # Each user has a single messenger: {messenger_name: "<name>", user_id: <id>}
+    users_by_telegram_id = {}
+    for user in users_list:
+        account = user.get('messenger', {})
+        if account.get('messenger_name') == messenger_name:
+            tg_user_id = account.get('user_id')
+            if tg_user_id:
+                users_by_telegram_id[tg_user_id] = user
+
+    def check_telegram_auth(user_id):
+        """Check if user is authorized via Telegram and return user data, or None."""
+        user_data = users_by_telegram_id.get(user_id)
+        if not user_data:
+            logger.warning(f"Unauthorized Telegram access attempt from {user_id}")
+            return None
+        return user_data
+
+    # ── Build a flat bot_config dict used by telegram_bot and webhook ──
+    # Use the first configured Sonarr / Radarr / Jellyfin for now.
+    # (In the future, users could specify which instance they prefer.)
+    first_sonarr    = next(iter(sonarrs_map.values()), {})
+    first_radarr    = next(iter(radarrs_map.values()), {})
+    first_jellyfin  = next(iter(media_servers_map.values()), {})
+
+    bot_config = {
+        'sonarr_url': first_sonarr.get('url'),
+        'sonarr_key': first_sonarr.get('key'),
+        'radarr_url': first_radarr.get('url'),
+        'radarr_key': first_radarr.get('key'),
+        'jellyfin_url': first_jellyfin.get('url'),
+        'jellyfin_api_key': first_jellyfin.get('api_key'),
+        'webhook_port': config.get('bot', {}).get('webhook_port', 8585),
+        'llm': config.get('llm', {}),
+        'radarrs': radarrs_map,
+        'sonarrs': sonarrs_map,
+    }
+
+    app_telegram = None
+    webhook_runner = None
+
+    result = await run_telegram_bot(telegram_conf, bot_config, check_telegram_auth)
+    if result:
+        app_telegram, media_db, media_jellyfin = result
+
+        # Start webhook server for Radarr/Sonarr notifications
+        webhook_runner = await start_webhook_server(
+            config=bot_config,
+            db=media_db,
+            jellyfin_client=media_jellyfin,
+            bot_app=app_telegram,
+            users_config=users_list,
+            messenger_name=messenger_name,
+        )
+
+    if not app_telegram:
+        logger.error("No bots were started. Check config.")
+        return
+
+    # Keep alive
+    logger.info("Bot valid and polling. Press Ctrl+C to stop.")
+
+    stop_event = asyncio.Event()
+    try:
+        await stop_event.wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        logger.info("Stopping bot...")
+        if webhook_runner:
+            await webhook_runner.cleanup()
+            logger.info("Webhook server stopped.")
+        if app_telegram:
+            await app_telegram.updater.stop()
+            await app_telegram.stop()
+            await app_telegram.shutdown()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
