@@ -6,7 +6,7 @@ import os
 
 logger = logging.getLogger(__name__)
 
-FeedbackType = Literal['watched', 'disliked']
+FeedbackType = Literal['watched', 'disliked', 'ignored']
 
 class Database:
     def __init__(self, db_path: str = "data/media_bot.db"):
@@ -151,7 +151,7 @@ class Database:
         
         cursor.execute("""
             SELECT DISTINCT content_id FROM user_content_feedback 
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked')
+            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored')
         """, (user_id,))
         
         rows = cursor.fetchall()
@@ -166,7 +166,7 @@ class Database:
         
         cursor.execute("""
             SELECT DISTINCT title FROM user_content_feedback 
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked')
+            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored')
         """, (user_id,))
         
         rows = cursor.fetchall()

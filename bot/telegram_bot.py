@@ -13,7 +13,7 @@ import requests
 import json
 import time
 import re
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandler, filters, CallbackQueryHandler
 from openai import OpenAI
 import chevron
@@ -360,6 +360,9 @@ def register_handlers(app: Application, config: dict, auth_func):
              
              # context.user_data['search_type'] = 'movie' # Redundant line removed
              
+             reply_markup = ReplyKeyboardMarkup([['Recommend more']], resize_keyboard=True, one_time_keyboard=False)
+             await update.message.reply_text("Here are your recommendations:", reply_markup=reply_markup)
+             
              await send_carousel_card(update, context, is_new=True)
              add_to_history(context, "assistant", f"Shared recommendations carousel for '{query}'")
 
@@ -594,37 +597,40 @@ def register_handlers(app: Application, config: dict, auth_func):
             if not already_available and item.get('id', 0) > 0:
                 already_available = True
         
-        # Navigation row
+        # First row: Feedback actions & Add
+        watched_data = make_safe_callback_data("WATCHED", type_, str(id_val or "0"), t)
+        dislike_data = make_safe_callback_data("DISLIKE", type_, str(id_val or "0"), t)
+        ignore_data = make_safe_callback_data("IGNORE", type_, str(id_val or "0"), t)
+        
+        action_row = [
+            InlineKeyboardButton("👁️👍", callback_data=watched_data),
+            InlineKeyboardButton("👁️👎", callback_data=dislike_data),
+            InlineKeyboardButton("🚫", callback_data=ignore_data)
+        ]
+        
+        if id_val:
+            add_button = InlineKeyboardButton("✅ Added", callback_data="NOP") if already_available else InlineKeyboardButton("➕ Add", callback_data=f"ADD|{type_}|{id_val}")
+            action_row.append(add_button)
+            
+        rows = [action_row]
+            
+        # Second row: Navigation
         nav_row = []
         if idx > 0:
             nav_row.append(InlineKeyboardButton("⬅️", callback_data="NAV|PREV"))
         else:
             nav_row.append(InlineKeyboardButton("⬅️", callback_data="NOP"))  # Disabled
         
-        if id_val:
-            if already_available:
-                nav_row.append(InlineKeyboardButton("✅ Added", callback_data="NOP"))
-            else:
-                nav_row.append(InlineKeyboardButton("➕ Add", callback_data=f"ADD|{type_}|{id_val}"))
-        else:
-            nav_row.append(InlineKeyboardButton("🚫 Not Found", callback_data="NOP"))
-        
         if idx < total - 1:
             nav_row.append(InlineKeyboardButton("➡️", callback_data="NAV|NEXT"))
         else:
             nav_row.append(InlineKeyboardButton("➡️", callback_data="NOP"))  # Disabled
-        
-        # Second row
-        rows = [nav_row]
+            
+        rows.append(nav_row)
+
         if jf_url:
             rows.append([InlineKeyboardButton("▶️ Play on Jellyfin", url=jf_url)])
-        elif id_val and not already_available:
-            watched_data = make_safe_callback_data("WATCHED", type_, str(id_val), t)
-            dislike_data = make_safe_callback_data("DISLIKE", type_, str(id_val), t)
-            rows.append([
-                InlineKeyboardButton("👁️ Watched", callback_data=watched_data),
-                InlineKeyboardButton("👎 Dislike", callback_data=dislike_data)
-            ])
+            
         reply_markup = InlineKeyboardMarkup(rows)
         
         try:
@@ -682,8 +688,8 @@ def register_handlers(app: Application, config: dict, auth_func):
             await query.answer()
             return
         
-        if data.startswith("WATCHED|") or data.startswith("DISLIKE|"):
-            # Format: WATCHED|type|id|title or DISLIKE|type|id|title
+        if data.startswith("WATCHED|") or data.startswith("DISLIKE|") or data.startswith("IGNORE|"):
+            # Format: WATCHED|type|id|title or DISLIKE|type|id|title or IGNORE|type|id|title
             parts = data.split("|")
             feedback_type = parts[0].lower()
             content_type = parts[1]
@@ -713,7 +719,13 @@ def register_handlers(app: Application, config: dict, auth_func):
                 feedback_type=feedback_type
             )
             
-            feedback_msg = "✅ Marked as watched" if feedback_type == "watched" else "✅ Marked as disliked"
+            if feedback_type == "watched":
+                feedback_msg = "✅ Marked as watched"
+            elif feedback_type == "dislike":
+                feedback_msg = "✅ Marked as disliked"
+            else:
+                feedback_msg = "✅ Ignored"
+                
             await query.answer(feedback_msg, show_alert=False)
             logger.info(f"User {user_id} marked {title} as {feedback_type}")
             return
