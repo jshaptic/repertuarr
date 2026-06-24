@@ -77,11 +77,26 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
             logger.error(f"Error fetching users summary: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_media_library(request):
+        """Return unified media library (merged requests + feedback) for a user."""
+        try:
+            user_id_str = request.query.get('user_id')
+            if not user_id_str:
+                return web.json_response({"error": "user_id is required"}, status=400)
+            user_id = int(user_id_str)
+            limit = int(request.query.get('limit', 200))
+            rows = db.get_user_media_library(user_id=user_id, limit=limit)
+            return web.json_response(rows)
+        except Exception as e:
+            logger.error(f"Error fetching media library: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     # Add API routes
     app.router.add_get('/admin/api/requests', api_requests)
     app.router.add_get('/admin/api/feedback', api_feedback)
     app.router.add_get('/admin/api/llm-logs', api_llm_logs)
     app.router.add_get('/admin/api/users', api_users)
+    app.router.add_get('/admin/api/media-library', api_media_library)
     
     # Define static files directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

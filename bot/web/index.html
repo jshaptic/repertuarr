@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=9">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=10">
 </head>
 <body>
     <div class="app-container">
@@ -176,15 +176,10 @@
                             Conversations
                             <span class="badge" id="user-llm-count">0</span>
                         </button>
-                        <button class="detail-tab" data-detail-target="detail-requests">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            Requests
-                            <span class="badge" id="user-requests-count">0</span>
-                        </button>
-                        <button class="detail-tab" data-detail-target="detail-feedback">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
-                            Feedback
-                            <span class="badge" id="user-feedback-count">0</span>
+                        <button class="detail-tab" data-detail-target="detail-media-library">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>
+                            Media Library
+                            <span class="badge" id="user-media-count">0</span>
                         </button>
                     </div>
 
@@ -207,25 +202,23 @@
                         </section>
                     </div>
 
-                    <!-- Requests sub-tab -->
-                    <div id="detail-requests" class="detail-tab-pane">
+                    <!-- Media Library sub-tab (merged Requests + Feedback) -->
+                    <div id="detail-media-library" class="detail-tab-pane">
                         <section class="card glass-effect">
                             <div class="table-container">
                                 <table class="data-table">
-                                    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Status</th></tr></thead>
-                                    <tbody id="user-requests-tbody"></tbody>
-                                </table>
-                            </div>
-                        </section>
-                    </div>
-
-                    <!-- Feedback sub-tab -->
-                    <div id="detail-feedback" class="detail-tab-pane">
-                        <section class="card glass-effect">
-                            <div class="table-container">
-                                <table class="data-table">
-                                    <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Feedback</th></tr></thead>
-                                    <tbody id="user-feedback-tbody"></tbody>
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Title</th>
+                                            <th>Type</th>
+                                            <th>IDs</th>
+                                            <th>Request</th>
+                                            <th>Feedback</th>
+                                            <th>Excluded</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="user-media-tbody"></tbody>
                                 </table>
                             </div>
                         </section>
@@ -282,6 +275,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=11"></script>
+    <script type="module" src="/admin/static/app.js?v=12"></script>
 </body>
 </html>

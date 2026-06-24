@@ -9,10 +9,12 @@ User preferences: {{user_preferences}}
 {{/user_name}}
 
 {{#watched_list}}
-User has already watched: {{watched_list}}
+## Movies/shows the user has WATCHED AND LIKED (do NOT re-recommend these, but use them to understand the user's taste):
+{{watched_list}}
 {{/watched_list}}
 {{#disliked_list}}
-User dislikes: {{disliked_list}}
+## Movies/shows the user has WATCHED AND DISLIKED (avoid recommending similar content in tone, genre, or style):
+{{disliked_list}}
 {{/disliked_list}}
 
 Your task is to generate 10 deeply curated recommendations based on the user's request: "{{query}}".

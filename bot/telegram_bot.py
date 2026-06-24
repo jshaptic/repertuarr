@@ -294,6 +294,15 @@ def register_handlers(app: Application, config: dict, auth_func):
                  discovery_filter = user_prefs.get('discovery_filter', {})
                  tmdb_candidates_list = tmdb_client.get_candidates(discovery_filter, user_lang)
                  if tmdb_candidates_list:
+                     # Filter out content the user has already watched/disliked/ignored by TMDB ID
+                     excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id)
+                     if excluded_tmdb_ids:
+                         pre_filter_count = len(tmdb_candidates_list)
+                         tmdb_candidates_list = [
+                             c for c in tmdb_candidates_list 
+                             if str(c.get('id', '')) not in excluded_tmdb_ids
+                         ]
+                         logger.info(f"Filtered TMDB candidates: {pre_filter_count} -> {len(tmdb_candidates_list)} (excluded {pre_filter_count - len(tmdb_candidates_list)} by TMDB ID)")
                      tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              
              prompt = load_prompt("recommendation", 
@@ -691,10 +700,14 @@ def register_handlers(app: Application, config: dict, auth_func):
         if data.startswith("WATCHED|") or data.startswith("DISLIKE|") or data.startswith("IGNORE|"):
             # Format: WATCHED|type|id|title or DISLIKE|type|id|title or IGNORE|type|id|title
             parts = data.split("|")
-            feedback_type = parts[0].lower()
+            raw_action = parts[0].lower()
             content_type = parts[1]
             content_id = parts[2]
             title = parts[3] if len(parts) > 3 else "Unknown"
+            
+            # Normalize to canonical feedback_type values
+            feedback_map = {"watched": "watched", "dislike": "disliked", "ignore": "ignored"}
+            feedback_type = feedback_map.get(raw_action, raw_action)
             
             # Try to recover full non-truncated title from message caption or text
             msg = update.callback_query.message
@@ -710,18 +723,24 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             user_id = update.effective_user.id
             
+            # Extract TMDB/TVDB IDs from callback data
+            tmdb_id = content_id if content_type == "movie" and content_id != "0" else None
+            tvdb_id = content_id if content_type == "series" and content_id != "0" else None
+            
             # Save feedback to database
             db.add_feedback(
                 user_id=user_id,
                 content_id=content_id,
                 content_type=content_type,
                 title=title,
-                feedback_type=feedback_type
+                feedback_type=feedback_type,
+                tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
             )
             
             if feedback_type == "watched":
                 feedback_msg = "✅ Marked as watched"
-            elif feedback_type == "dislike":
+            elif feedback_type == "disliked":
                 feedback_msg = "✅ Marked as disliked"
             else:
                 feedback_msg = "✅ Ignored"

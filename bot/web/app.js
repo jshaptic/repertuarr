@@ -149,14 +149,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('detail-user-name').textContent = userName;
 
         try {
-            const [reqRes, fbRes, llmRes] = await Promise.all([
-                fetch(`/admin/api/requests?user_id=${userId}`),
-                fetch(`/admin/api/feedback?user_id=${userId}`),
+            const [mediaRes, llmRes] = await Promise.all([
+                fetch(`/admin/api/media-library?user_id=${userId}`),
                 fetch(`/admin/api/llm-logs?user_id=${userId}`)
             ]);
 
-            renderUserRequests(await reqRes.json());
-            renderUserFeedback(await fbRes.json());
+            renderMediaLibrary(await mediaRes.json());
             renderUserLlmLogs(await llmRes.json());
         } catch (error) {
             console.error('Error fetching user details:', error);
@@ -250,38 +248,65 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Render: User detail — requests ──────────────────────────────
-    function renderUserRequests(data) {
-        document.getElementById('user-requests-count').textContent = data.length || 0;
-        const tbody = document.getElementById('user-requests-tbody');
+    // ── Render: User detail — Media Library (merged requests + feedback) ─
+    function renderMediaLibrary(data) {
+        document.getElementById('user-media-count').textContent = data.length || 0;
+        const tbody = document.getElementById('user-media-tbody');
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(4, 'No media requests yet');
+            tbody.innerHTML = emptyRow(7, 'No media interactions yet');
             return;
         }
-        tbody.innerHTML = data.map(item => `
-            <tr>
-                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(item.title)}</td>
-                <td class="type-label">${escapeHtml(item.media_type || '—')}</td>
-                <td><span class="status-label status-${(item.status || 'pending').toLowerCase()}">${escapeHtml(item.status || 'pending')}</span></td>
-            </tr>
-        `).join('');
-    }
 
-    // ── Render: User detail — feedback ──────────────────────────────
-    function renderUserFeedback(data) {
-        document.getElementById('user-feedback-count').textContent = data.length || 0;
-        const tbody = document.getElementById('user-feedback-tbody');
-        if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(4, 'No feedback yet');
-            return;
+        // Helpers for rendering feedback/status/excluded pills
+        function requestPill(status) {
+            if (!status) return '<span class="pill pill-muted">—</span>';
+            const map = {
+                'pending': 'pill-amber',
+                'notified': 'pill-emerald',
+            };
+            const cls = map[status.toLowerCase()] || 'pill-muted';
+            return `<span class="pill ${cls}">${escapeHtml(status)}</span>`;
         }
+
+        function feedbackPill(type) {
+            if (!type) return '<span class="pill pill-muted">—</span>';
+            const normalized = type.toLowerCase();
+            // Handle both old (dislike/ignore) and new (disliked/ignored) values
+            if (normalized === 'watched') {
+                return '<span class="pill pill-emerald">👍 Liked</span>';
+            } else if (normalized === 'disliked' || normalized === 'dislike') {
+                return '<span class="pill pill-rose">👎 Disliked</span>';
+            } else if (normalized === 'ignored' || normalized === 'ignore') {
+                return '<span class="pill pill-muted">—</span>';
+            }
+            return `<span class="pill pill-muted">${escapeHtml(type)}</span>`;
+        }
+
+        function excludedPill(type) {
+            if (!type) return '';
+            const normalized = type.toLowerCase();
+            if (normalized === 'ignored' || normalized === 'ignore') {
+                return '<span class="pill pill-rose">🚫 Excluded</span>';
+            }
+            return '';
+        }
+
+        function idsColumn(tmdb_id, tvdb_id) {
+            let parts = [];
+            if (tmdb_id) parts.push(`<span class="type-label">TMDB:</span> ${escapeHtml(tmdb_id)}`);
+            if (tvdb_id) parts.push(`<span class="type-label">TVDB:</span> ${escapeHtml(tvdb_id)}`);
+            return parts.length > 0 ? parts.join('<br>') : '<span class="pill pill-muted">—</span>';
+        }
+
         tbody.innerHTML = data.map(item => `
             <tr>
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(item.title || '—')}</td>
-                <td class="type-label">${escapeHtml(item.content_type || '—')}</td>
-                <td><span class="status-label feedback-${(item.feedback_type || '').toLowerCase()}">${escapeHtml(item.feedback_type || '—')}</span></td>
+                <td class="type-label">${escapeHtml(item.media_type || '—')}</td>
+                <td style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.4;">${idsColumn(item.tmdb_id, item.tvdb_id)}</td>
+                <td>${requestPill(item.request_status)}</td>
+                <td>${feedbackPill(item.feedback_type)}</td>
+                <td>${excludedPill(item.feedback_type)}</td>
             </tr>
         `).join('');
     }

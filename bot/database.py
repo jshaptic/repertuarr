@@ -64,6 +64,16 @@ class Database:
         except sqlite3.OperationalError:
             pass
         
+        # Migration: add tmdb_id and tvdb_id to user_content_feedback (existing DBs)
+        try:
+            cursor.execute("ALTER TABLE user_content_feedback ADD COLUMN tmdb_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE user_content_feedback ADD COLUMN tvdb_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_media_requests_status
             ON media_requests(status)
@@ -102,7 +112,9 @@ class Database:
         content_id: str,
         content_type: str,
         title: str,
-        feedback_type: FeedbackType
+        feedback_type: FeedbackType,
+        tmdb_id: str = None,
+        tvdb_id: str = None
     ):
         """Add or update user feedback for content"""
         conn = sqlite3.connect(self.db_path)
@@ -110,9 +122,9 @@ class Database:
         
         cursor.execute("""
             INSERT OR REPLACE INTO user_content_feedback 
-            (user_id, content_id, content_type, title, feedback_type, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (user_id, content_id, content_type, title, feedback_type, datetime.now()))
+            (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, datetime.now()))
         
         conn.commit()
         conn.close()
@@ -151,7 +163,7 @@ class Database:
         
         cursor.execute("""
             SELECT DISTINCT content_id FROM user_content_feedback 
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored')
+            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
         """, (user_id,))
         
         rows = cursor.fetchall()
@@ -166,7 +178,7 @@ class Database:
         
         cursor.execute("""
             SELECT DISTINCT title FROM user_content_feedback 
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored')
+            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
         """, (user_id,))
         
         rows = cursor.fetchall()
@@ -174,6 +186,23 @@ class Database:
         
         # Normalize titles to lowercase for case-insensitive matching
         return {row[0].lower() for row in rows if row[0]}
+    
+    def get_excluded_tmdb_ids(self, user_id: int) -> set:
+        """Get set of TMDB IDs that should be excluded from TMDB candidate pool"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT tmdb_id FROM user_content_feedback 
+            WHERE user_id = ? 
+              AND tmdb_id IS NOT NULL 
+              AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
+        """, (user_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return {row[0] for row in rows if row[0]}
     
     def get_feedback_titles(self, user_id: int, feedback_type: FeedbackType) -> list:
         """Get list of titles for a specific feedback type (for prompt context)"""
@@ -332,6 +361,59 @@ class Database:
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (limit,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+
+    def get_user_media_library(self, user_id: int, limit: int = 200) -> List[dict]:
+        """Get a unified media library view combining requests and feedback for the admin UI.
+        
+        Returns a merged list where each unique title has its request status,
+        feedback type, and external IDs aggregated into a single row.
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # SQLite lacks FULL OUTER JOIN, so we use UNION of:
+        # 1) Feedback rows LEFT JOINed with matching requests
+        # 2) Request-only rows (no matching feedback)
+        cursor.execute("""
+            SELECT 
+                f.title,
+                f.content_type as media_type,
+                r.status as request_status,
+                f.feedback_type,
+                COALESCE(f.tmdb_id, r.tmdb_id) as tmdb_id,
+                COALESCE(f.tvdb_id, r.tvdb_id) as tvdb_id,
+                f.created_at
+            FROM user_content_feedback f
+            LEFT JOIN media_requests r 
+                ON r.telegram_id = ? AND LOWER(f.title) = LOWER(r.title)
+            WHERE f.user_id = ?
+            
+            UNION ALL
+            
+            SELECT 
+                r2.title,
+                r2.media_type,
+                r2.status as request_status,
+                NULL as feedback_type,
+                r2.tmdb_id,
+                r2.tvdb_id,
+                r2.created_at
+            FROM media_requests r2
+            WHERE r2.telegram_id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_content_feedback f2 
+                  WHERE f2.user_id = ? AND LOWER(f2.title) = LOWER(r2.title)
+              )
+            
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (user_id, user_id, user_id, user_id, limit))
         
         rows = cursor.fetchall()
         conn.close()
