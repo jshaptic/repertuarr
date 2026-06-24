@@ -23,7 +23,8 @@ Guidelines:
 {{/user_guidelines}}
 
 {{#language}}
-IMPORTANT: Generate all titles and overviews in {{language}} language.
+IMPORTANT: Generate `title` and `overview` in {{language}} language.
+Always provide the `original_title` field in the media's original language (usually English) — this is used for database lookups.
 {{/language}}
 
 Return the result as a strict JSON object adhering to the schema.

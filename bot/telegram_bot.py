@@ -1,7 +1,18 @@
+"""
+Telegram Bot Handler Module
+
+This module orchestrates the Telegram bot interface. It handles user messages,
+processes LLM intent classification (inquiring about media or requesting recommendations),
+renders interactive carousels of movies and shows, lazy-loads media metadata,
+interacts with Sonarr/Radarr APIs, registers user feedback (watched/disliked),
+and manages callback queries for inline button interactions.
+"""
+
 import logging
 import requests
 import json
 import time
+import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandler, filters, CallbackQueryHandler
 from openai import OpenAI
@@ -184,7 +195,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         try:
             # Build messages: System + History
-            system_content = load_prompt("inquiry")
+            system_content = load_prompt("inquiry", language=user_lang)
             messages = [{"role": "system", "content": system_content}]
             
             # Add history
@@ -447,12 +458,29 @@ def register_handlers(app: Application, config: dict, auth_func):
                     # If year is missing in our generated data, stick to first result?
                     # Or if off by 1 year.
                     if abs(item.get('year', 0) - year) <= 1:
-                         return item
+                        return item
                 
                 if results: return results[0] # Fallback to first
         except Exception as e:
             logger.error(f"Metadata lookup failed: {e}")
         return None
+
+    def make_safe_callback_data(action: str, type_: str, id_val: str, title: str) -> str:
+        """
+        Creates a callback_data string for Telegram inline keyboard button.
+        Ensures that the total UTF-8 byte length is strictly less than 64 bytes by truncating the title if needed.
+        """
+        prefix = f"{action}|{type_}|{id_val}|"
+        prefix_bytes_len = len(prefix.encode('utf-8'))
+        # Telegram limit is 64 bytes. Let's cap at 60 bytes to be safe.
+        max_title_bytes = 60 - prefix_bytes_len
+        
+        title_bytes = title.encode('utf-8')
+        if len(title_bytes) > max_title_bytes:
+            truncated_title = title_bytes[:max_title_bytes].decode('utf-8', errors='ignore')
+            title = truncated_title.strip()
+            
+        return f"{prefix}{title}"
 
     async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, is_new: bool = False):
         results = context.user_data.get('search_results', [])
@@ -469,6 +497,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Check if we have an ID (Radarr/Sonarr ID or TMDB/TVDB ID). 
         # Generated items might be Pydantic models or dicts from API.
         # Use getattr for Pydantic, dict.get for dicts
+        lookup_title = None  # Will be set to original_title for Pydantic items
         if isinstance(item, dict):
             id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
             t = item.get('title', 'N/A')
@@ -480,12 +509,18 @@ def register_handlers(app: Application, config: dict, auth_func):
             t = item.title
             y = item.year
             overview = item.overview
+            lookup_title = getattr(item, 'original_title', t)  # Use original title for Radarr/Sonarr search
         if not id_val:
-            # Need to lookup
-            logger.info(f"Lazy loading metadata for {t}")
-            full_item = await lookup_metadata(t, y if isinstance(y, int) else 0, type_, context.user_data.get('user_info', {}))
+            # Need to lookup — use original_title for API search if available
+            search_title = lookup_title or t
+            logger.info(f"Lazy loading metadata for '{t}' (searching as '{search_title}')")
+            full_item = await lookup_metadata(search_title, y if isinstance(y, int) else 0, type_, context.user_data.get('user_info', {}))
             
             if full_item:
+                # Preserve localized display fields from LLM
+                if not isinstance(item, dict):
+                    full_item['_display_title'] = t
+                    full_item['_display_overview'] = overview
                 results[idx] = full_item
                 item = full_item
                 context.user_data['search_results'] = results # Save back
@@ -502,9 +537,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Extract display fields
         if isinstance(item, dict):
             id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
-            t = item.get('title', 'N/A')
+            t = item.get('_display_title', item.get('title', 'N/A'))
             y = item.get('year', 'N/A')
-            overview = item.get('overview', 'No description available')
+            overview = item.get('_display_overview', item.get('overview', 'No description available'))
             remote_poster = item.get('remotePoster')
             if not remote_poster and item.get('images'):
                 for img in item.get('images'):
@@ -570,9 +605,11 @@ def register_handlers(app: Application, config: dict, auth_func):
         if jf_url:
             rows.append([InlineKeyboardButton("▶️ Play on Jellyfin", url=jf_url)])
         elif id_val and not already_available:
+            watched_data = make_safe_callback_data("WATCHED", type_, str(id_val), t)
+            dislike_data = make_safe_callback_data("DISLIKE", type_, str(id_val), t)
             rows.append([
-                InlineKeyboardButton("👁️ Watched", callback_data=f"WATCHED|{type_}|{id_val}|{t}"),
-                InlineKeyboardButton("👎 Dislike", callback_data=f"DISLIKE|{type_}|{id_val}|{t}")
+                InlineKeyboardButton("👁️ Watched", callback_data=watched_data),
+                InlineKeyboardButton("👎 Dislike", callback_data=dislike_data)
             ])
         reply_markup = InlineKeyboardMarkup(rows)
         
@@ -638,6 +675,18 @@ def register_handlers(app: Application, config: dict, auth_func):
             content_type = parts[1]
             content_id = parts[2]
             title = parts[3] if len(parts) > 3 else "Unknown"
+            
+            # Try to recover full non-truncated title from message caption or text
+            msg = update.callback_query.message
+            if msg:
+                text = msg.caption or msg.text or ""
+                if text:
+                    first_line = text.split("\n")[0].strip()
+                    first_line = first_line.lstrip("🎬").strip()
+                    # Strip trailing "(Year)" or "(N/A)"
+                    recovered_title = re.sub(r"\s*\((?:\d{4}|N/A)\)$", "", first_line)
+                    if recovered_title:
+                        title = recovered_title
             
             user_id = update.effective_user.id
             
