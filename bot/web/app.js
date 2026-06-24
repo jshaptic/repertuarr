@@ -62,6 +62,20 @@ document.addEventListener('DOMContentLoaded', () => {
         switchTab('users', 'Users');
     });
 
+    // ── Detail sub-tab navigation ───────────────────────────────────
+    const detailTabs = document.querySelectorAll('.detail-tab');
+    const detailPanes = document.querySelectorAll('.detail-tab-pane');
+
+    detailTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetId = tab.getAttribute('data-detail-target');
+            detailTabs.forEach(t => t.classList.remove('active'));
+            detailPanes.forEach(p => p.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(targetId).classList.add('active');
+        });
+    });
+
     // ── Mobile sidebar ──────────────────────────────────────────────
     function closeMobileSidebar() {
         sidebar.classList.remove('open');
@@ -122,6 +136,12 @@ document.addEventListener('DOMContentLoaded', () => {
     async function showUserDetails(userId, userName) {
         switchTab('user-details', userName);
         currentTabSubtitle.textContent = 'User profile';
+
+        // Reset sub-tabs to Conversations
+        detailTabs.forEach(t => t.classList.remove('active'));
+        detailPanes.forEach(p => p.classList.remove('active'));
+        detailTabs[0].classList.add('active');
+        detailPanes[0].classList.add('active');
 
         // Set avatar initials
         const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2);
@@ -273,33 +293,74 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('user-llm-tbody');
 
         if (!filteredData || filteredData.length === 0) {
-            tbody.innerHTML = emptyRow(4, 'No bot interactions yet');
+            tbody.innerHTML = emptyRow(4, 'No conversations yet');
             return;
         }
 
-        tbody.innerHTML = filteredData.map(item => {
-            let suggestionsHtml = '<span style="color:var(--text-muted)">—</span>';
+        tbody.innerHTML = '';
+        filteredData.forEach((item, idx) => {
+            // Parse suggested media items from LLM response
+            let mediaItems = [];
             if (item.llm_response) {
                 try {
                     const parsed = JSON.parse(item.llm_response);
                     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-                        const badges = parsed.items.map(media => {
-                            const title = media.title || 'Unknown';
-                            return `<span class="suggestion-badge" title="${escapeHtml(title)}">${escapeHtml(title)}</span>`;
-                        }).join('');
-                        suggestionsHtml = `<div class="suggestions-container">${badges}</div>`;
+                        mediaItems = parsed.items;
                     }
                 } catch (e) { /* non-JSON response, ignore */ }
             }
-            return `
-            <tr>
+
+            const hasMedia = mediaItems.length > 0;
+            const chevronHtml = hasMedia
+                ? `<span class="expand-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>`
+                : '';
+
+            // Main row
+            const mainRow = document.createElement('tr');
+            mainRow.className = hasMedia ? 'expandable-row' : '';
+            mainRow.innerHTML = `
+                <td>${chevronHtml}</td>
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
-                <td>${suggestionsHtml}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
                 <td><span class="pill ${intentPillClass(item.intent)}">${escapeHtml(item.intent || '—')}</span></td>
-            </tr>
             `;
-        }).join('');
+            tbody.appendChild(mainRow);
+
+            // Expanded row with suggested media sub-table
+            if (hasMedia) {
+                const expandRow = document.createElement('tr');
+                expandRow.className = 'expanded-content';
+                const expandCell = document.createElement('td');
+                expandCell.colSpan = 4;
+
+                let tableRows = mediaItems.map(media => `
+                    <tr>
+                        <td>${escapeHtml(media.title || '—')}</td>
+                        <td>${escapeHtml(media.original_title || '—')}</td>
+                        <td>${media.year || '—'}</td>
+                        <td class="overview-cell" title="${escapeHtml(media.overview || '')}">${escapeHtml(media.overview || '—')}</td>
+                    </tr>
+                `).join('');
+
+                expandCell.innerHTML = `
+                    <div class="expanded-inner">
+                        <h4>Suggested Media (${mediaItems.length})</h4>
+                        <table class="suggested-table">
+                            <thead><tr><th>Title</th><th>Original Title</th><th>Year</th><th>Overview</th></tr></thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>
+                `;
+                expandRow.appendChild(expandCell);
+                tbody.appendChild(expandRow);
+
+                // Toggle expand on click
+                mainRow.addEventListener('click', () => {
+                    mainRow.classList.toggle('expanded');
+                    expandRow.classList.toggle('open');
+                });
+            }
+        });
     }
 
     // ── Render: Global AI Activity table ────────────────────────────

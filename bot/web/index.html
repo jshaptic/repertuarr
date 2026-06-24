@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=5">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=9">
 </head>
 <body>
     <div class="app-container">
@@ -168,13 +168,48 @@
                             <h2 id="detail-user-name">User Details</h2>
                         </div>
                     </div>
-                    
-                    <div class="detail-grid">
+
+                    <!-- Sub-tab bar -->
+                    <div class="detail-tabs">
+                        <button class="detail-tab active" data-detail-target="detail-conversations">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            Conversations
+                            <span class="badge" id="user-llm-count">0</span>
+                        </button>
+                        <button class="detail-tab" data-detail-target="detail-requests">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Requests
+                            <span class="badge" id="user-requests-count">0</span>
+                        </button>
+                        <button class="detail-tab" data-detail-target="detail-feedback">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                            Feedback
+                            <span class="badge" id="user-feedback-count">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Conversations sub-tab -->
+                    <div id="detail-conversations" class="detail-tab-pane active">
                         <section class="card glass-effect">
-                            <div class="card-header">
-                                <h3>Media Requests</h3>
-                                <span class="badge" id="user-requests-count">0</span>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:20px"></th>
+                                            <th>Date</th>
+                                            <th>Message</th>
+                                            <th>Intent</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="user-llm-tbody"></tbody>
+                                </table>
                             </div>
+                        </section>
+                    </div>
+
+                    <!-- Requests sub-tab -->
+                    <div id="detail-requests" class="detail-tab-pane">
+                        <section class="card glass-effect">
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Status</th></tr></thead>
@@ -182,12 +217,11 @@
                                 </table>
                             </div>
                         </section>
+                    </div>
 
+                    <!-- Feedback sub-tab -->
+                    <div id="detail-feedback" class="detail-tab-pane">
                         <section class="card glass-effect">
-                            <div class="card-header">
-                                <h3>Feedback</h3>
-                                <span class="badge" id="user-feedback-count">0</span>
-                            </div>
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead><tr><th>Date</th><th>Title</th><th>Type</th><th>Feedback</th></tr></thead>
@@ -196,26 +230,6 @@
                             </div>
                         </section>
                     </div>
-
-                    <section class="card glass-effect" style="margin-top: 1.5rem;">
-                        <div class="card-header">
-                            <h3>Bot Interactions</h3>
-                            <span class="badge" id="user-llm-count">0</span>
-                        </div>
-                        <div class="table-container">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Message</th>
-                                        <th>Suggested Media</th>
-                                        <th>Intent</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="user-llm-tbody"></tbody>
-                            </table>
-                        </div>
-                    </section>
                 </div>
                 
                 <!-- AI Activity Section -->
@@ -268,6 +282,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=9"></script>
+    <script type="module" src="/admin/static/app.js?v=11"></script>
 </body>
 </html>
