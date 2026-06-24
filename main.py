@@ -103,7 +103,8 @@ async def main():
         'jellyfin_url': first_jellyfin.get('url'),
         'jellyfin_api_key': first_jellyfin.get('api_key'),
         'webhook_port': config.get('bot', {}).get('webhook_port', 8585),
-        'llm': config.get('llm', {}),
+        'llms': config.get('llms', []),
+        'agent': config.get('agent', {}),
         'radarrs': radarrs_map,
         'sonarrs': sonarrs_map,
     }

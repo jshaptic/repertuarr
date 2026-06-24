@@ -1,13 +1,14 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-24
-**Goal:** Integrate TMDB service to fetch movies and TV shows based on user preferences and feed them to the LLM for better recommendations.
-**Now:** Added `bot/tmdb.py` to fetch TMDB content with user-defined filters (`discovery_filter`). Updated LLM prompt and recommendation flow to include TMDB candidates.
-**Next:** Test TMDB fetching and LLM response curation with valid TMDB API key.
+**Date:** 2026-06-25
+**Goal:** Refactor LLM configuration to support multiple models with different parameters.
+**Now:** Updated `config.yaml` to use an `llms` list and an `agent` mapping that contains a `prompts` section. Each prompt now specifies `source`, `path`, and `llm`. Updated `telegram_bot.py` to use these parameters.
+**Next:** Test with multiple LLM profiles.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-25 Refactored `llm` config block to `llms` array and `agents` intent-mapping. `telegram_bot.py` now maps intents to specific LLM configurations.
 - `[CODE]` 2026-06-25 Added `tmdb_id` to `RecommendationItem` in `models.py` and to the `recommendation.mustache` prompt template.
 - `[CODE]` 2026-06-24 Renamed "AI Activity" to "Logs" in Admin UI and added a new sub-section to view TMDB requests/responses. Logs are now saved to `tmdb_logs` in `bot/database.py`.
 - `[CODE]` 2026-06-24 Enforced strict LLM recommendation pool and modified TMDB fetching to retrieve exactly 15 popular, 15 top ranked, and 70 discovery candidates excluding ignored/watched items (`bot/tmdb.py`, `bot/telegram_bot.py`, `recommendation.mustache`).

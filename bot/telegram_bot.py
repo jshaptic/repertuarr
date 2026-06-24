@@ -24,10 +24,19 @@ from bot.translations import get_text
 from bot.jellyfin import JellyfinClient
 logger = logging.getLogger(__name__)
 
-def load_prompt(name, **kwargs):
-    current_dir = os.path.dirname(__file__)
-    prompt_path = os.path.join(current_dir, 'prompts', f'{name}.mustache')
-    with open(prompt_path, 'r') as f:
+def load_prompt(prompt_config: dict, **kwargs):
+    source = prompt_config.get('source')
+    if source != 'local':
+        raise ValueError(f"Unsupported prompt source: {source}")
+    path = prompt_config.get('path')
+    if not path:
+        raise ValueError("Prompt path is missing")
+    
+    if not os.path.isabs(path):
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(project_root, path)
+        
+    with open(path, 'r') as f:
         return chevron.render(f, kwargs)
 
 def add_to_history(context: ContextTypes.DEFAULT_TYPE, role: str, content: str):
@@ -44,13 +53,39 @@ def add_to_history(context: ContextTypes.DEFAULT_TYPE, role: str, content: str):
 def register_handlers(app: Application, config: dict, auth_func):
     """Registers commands for the Media (*Arr) bot"""
     
-    # Initialize OpenAI client if configured
-    llm_config = config.get('llm', {})
-    client = None
-    if llm_config.get('api_key') and llm_config.get('provider') == 'openai':
-        client = OpenAI(api_key=llm_config.get('api_key'))
-    else:
+    # Initialize OpenAI clients for configured LLMs
+    llms = config.get('llms', [])
+    agent_config = config.get('agent', {})
+    agent_prompts = agent_config.get('prompts', {})
+    
+    openai_clients = {}
+    llm_configs = {}
+    for llm in llms:
+        name = llm.get('name')
+        if not name:
+            continue
+        llm_configs[name] = llm
+        api_key = llm.get('api_key')
+        if api_key and llm.get('provider') == 'openai':
+            if api_key not in openai_clients:
+                openai_clients[api_key] = OpenAI(api_key=api_key)
+                
+    if not openai_clients:
         logger.warning("OpenAI not configured. LLM features will be disabled.")
+
+    def get_agent_llm(agent_type: str):
+        prompt_cfg = agent_prompts.get(agent_type, {})
+        llm_name = prompt_cfg.get('llm')
+        cfg = llm_configs.get(llm_name) if llm_name else (llms[0] if llms else {})
+        client_instance = openai_clients.get(cfg.get('api_key')) if cfg else None
+        return cfg, client_instance
+
+    def build_llm_kwargs(cfg: dict, **base_kwargs):
+        kwargs = base_kwargs.copy()
+        if 'temperature' in cfg: kwargs['temperature'] = cfg['temperature']
+        if 'top_p' in cfg: kwargs['top_p'] = cfg['top_p']
+        if 'effort' in cfg: kwargs['reasoning_effort'] = cfg['effort']
+        return kwargs
     
     # Initialize database
     db = Database()
@@ -122,7 +157,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
-        if not client:
+        if not openai_clients:
             await update.message.reply_text("⚠️ LLM not configured. Cannot process request.")
             add_to_history(context, "assistant", "⚠️ LLM not configured. Cannot process request.")
             return
@@ -136,7 +171,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         try:
             # 1. Classify with LLM
             # Build messages: System + History
-            system_content = load_prompt("intent_classification")
+            system_content = load_prompt(agent_prompts.get('intent', {}))
             messages = [{"role": "system", "content": system_content}]
             
             # Add history (excluding the one we just added? No, include it.)
@@ -147,11 +182,16 @@ def register_handlers(app: Application, config: dict, auth_func):
             logger.info(f"Sending LLM Request (Intent): {json.dumps(messages, ensure_ascii=False)}")
             
             start_time = time.time()
-            response = client.beta.chat.completions.parse(
-                model=config.get('llm', {}).get('model', 'gpt-4o'),
+            llm_cfg, current_client = get_agent_llm('intent')
+            if not current_client:
+                raise ValueError("No OpenAI client available for intent classification")
+            
+            kwargs = build_llm_kwargs(llm_cfg,
+                model=llm_cfg.get('model', 'gpt-4o'),
                 messages=messages,
                 response_format=IntentResponse
             )
+            response = current_client.beta.chat.completions.parse(**kwargs)
             duration_ms = int((time.time() - start_time) * 1000)
             
             result = response.choices[0].message.parsed
@@ -206,7 +246,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         try:
             # Build messages: System + History
-            system_content = load_prompt("inquiry", language=user_lang)
+            system_content = load_prompt(agent_prompts.get('inquiry', {}), language=user_lang)
             messages = [{"role": "system", "content": system_content}]
             
             # Add history
@@ -215,12 +255,17 @@ def register_handlers(app: Application, config: dict, auth_func):
             logger.info(f"Sending LLM Request (Inquiry)")
             
             start_time = time.time()
-            response = client.responses.parse(
-                model=config.get('llm', {}).get('model', 'gpt-4.1-mini'),
+            llm_cfg, current_client = get_agent_llm('inquiry')
+            if not current_client:
+                raise ValueError("No OpenAI client available for inquiry")
+                
+            kwargs = build_llm_kwargs(llm_cfg,
+                model=llm_cfg.get('model', 'gpt-4.1-mini'),
                 input=messages,
                 text_format=InquiryResponse,
                 tools=[{"type": "web_search"}]
             )
+            response = current_client.responses.parse(**kwargs)
             duration_ms = int((time.time() - start_time) * 1000)
             
             parsed = response.output_parsed
@@ -302,7 +347,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  if tmdb_candidates_list:
                      tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              
-             prompt = load_prompt("recommendation", 
+             prompt = load_prompt(agent_prompts.get('recommend', {}), 
                                 query=query, 
                                 user_name=user_name,
                                 language=user_lang,
@@ -314,12 +359,17 @@ def register_handlers(app: Application, config: dict, auth_func):
              logger.info(f"Sending LLM Request (Recommend): {prompt}")
              
              start_time = time.time()
-             response = client.responses.parse(
-                model=config.get('llm', {}).get('model', 'gpt-4o-mini'),
+             llm_cfg, current_client = get_agent_llm('recommend')
+             if not current_client:
+                 raise ValueError("No OpenAI client available for recommend")
+                 
+             kwargs = build_llm_kwargs(llm_cfg,
+                model=llm_cfg.get('model', 'gpt-4o-mini'),
                 input=[{"role": "user", "content": prompt}],
                 text_format=RecommendationResponse,
                 tools=[{"type": "web_search"}]
              )
+             response = current_client.responses.parse(**kwargs)
              duration_ms = int((time.time() - start_time) * 1000)
              parsed_response = response.output_parsed
              logger.info(f"LLM Response Parsed (Recommend): {parsed_response}")
