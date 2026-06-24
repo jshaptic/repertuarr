@@ -3,68 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Homelab Bot Admin</title>
+    <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=4">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=5">
 </head>
 <body>
     <div class="app-container">
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="sidebar">
             <div class="logo">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <h1>Bot Admin</h1>
+                <div class="logo-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+                        <line x1="12" y1="22" x2="12" y2="15.5"/>
+                        <polyline points="22 8.5 12 15.5 2 8.5"/>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <h1>Repertuarr</h1>
+                    <span class="logo-tagline">Admin Panel</span>
+                </div>
             </div>
             
             <nav class="nav-menu">
-                <button class="nav-item active" data-target="overview">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                    Overview
+                <button class="nav-item active" data-target="dashboard">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="9" rx="1"></rect>
+                        <rect x="14" y="3" width="7" height="5" rx="1"></rect>
+                        <rect x="14" y="12" width="7" height="9" rx="1"></rect>
+                        <rect x="3" y="16" width="7" height="5" rx="1"></rect>
+                    </svg>
+                    Dashboard
                 </button>
                 <button class="nav-item" data-target="users">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
                     Users
                 </button>
-                <button class="nav-item" data-target="llm-interactions">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    LLM Interactions
+                <button class="nav-item" data-target="ai-activity">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a4 4 0 0 1 4 4v1a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-1"/>
+                        <path d="M8 10H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h0a4 4 0 0 1 4-4"/>
+                        <rect x="8" y="14" width="8" height="8" rx="2"/>
+                        <path d="M12 14v-4"/>
+                        <path d="M10 18h4"/>
+                    </svg>
+                    AI Activity
                 </button>
             </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-divider"></div>
+                <div class="sidebar-meta">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span id="last-refreshed">—</span>
+                </div>
+            </div>
         </aside>
 
+        <!-- Mobile Sidebar Toggle -->
+        <button class="mobile-toggle" id="mobile-toggle" aria-label="Toggle sidebar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
         <!-- Main Content -->
-        <main class="main-content">
-            <header class="top-nav">
-                <h2 id="current-tab-title">Overview</h2>
+        <main class="main-content" id="main-content">
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <h2 id="current-tab-title">Dashboard</h2>
+                    <span class="top-bar-subtitle" id="current-tab-subtitle">System overview</span>
+                </div>
                 <div class="header-actions">
-                    <button id="refresh-btn" class="btn primary">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-                        Refresh
+                    <button id="refresh-btn" class="btn-icon" title="Refresh data">
+                        <svg id="refresh-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                        </svg>
                     </button>
                 </div>
             </header>
 
             <div class="tab-content">
-                <!-- Overview Section -->
-                <div id="overview" class="tab-pane active">
-                    <div class="grid-layout">
-                        <div class="stat-card glass-effect">
-                            <h3>Total Users</h3>
-                            <p id="stat-users" class="stat-value">0</p>
+                <!-- Dashboard Section -->
+                <div id="dashboard" class="tab-pane active">
+                    <div class="stats-grid">
+                        <div class="stat-card glass-effect" data-accent="blue">
+                            <div class="stat-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">Users</span>
+                                <span id="stat-users" class="stat-value">0</span>
+                            </div>
                         </div>
-                        <div class="stat-card glass-effect">
-                            <h3>Total Requests</h3>
-                            <p id="stat-requests" class="stat-value">0</p>
+                        <div class="stat-card glass-effect" data-accent="emerald">
+                            <div class="stat-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">Requests</span>
+                                <span id="stat-requests" class="stat-value">0</span>
+                            </div>
                         </div>
-                        <div class="stat-card glass-effect">
-                            <h3>Total Feedback</h3>
-                            <p id="stat-feedback" class="stat-value">0</p>
+                        <div class="stat-card glass-effect" data-accent="amber">
+                            <div class="stat-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">Feedback</span>
+                                <span id="stat-feedback" class="stat-value">0</span>
+                            </div>
                         </div>
-                        <div class="stat-card glass-effect">
-                            <h3>LLM Interactions</h3>
-                            <p id="stat-llm" class="stat-value">0</p>
+                        <div class="stat-card glass-effect" data-accent="violet">
+                            <div class="stat-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">AI Calls</span>
+                                <span id="stat-llm" class="stat-value">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -73,40 +133,46 @@
                 <div id="users" class="tab-pane">
                     <section class="card glass-effect">
                         <div class="card-header">
-                            <h2>Users</h2>
+                            <h3>All Users</h3>
                             <span class="badge" id="users-count">0</span>
                         </div>
                         <div class="table-container">
-                            <table class="data-table interactive-table" id="users-table">
+                            <table class="data-table clickable-rows" id="users-table">
                                 <thead>
                                     <tr>
                                         <th>User</th>
                                         <th>Services</th>
                                         <th>Requests</th>
                                         <th>Feedback</th>
-                                        <th>LLM Uses</th>
+                                        <th>AI Uses</th>
                                         <th>Last Active</th>
                                     </tr>
                                 </thead>
                                 <tbody id="users-tbody">
-                                    <tr><td colspan="5" class="loading-state">Loading...</td></tr>
+                                    <tr><td colspan="6" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><span>Loading users…</span></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
                 </div>
 
-                <!-- User Details Section (Hidden normally) -->
+                <!-- User Details Section (hidden by default) -->
                 <div id="user-details" class="tab-pane">
                     <div class="user-details-header">
-                        <button id="back-to-users" class="btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Back to Users</button>
-                        <h2 id="detail-user-id">User Details</h2>
+                        <button id="back-to-users" class="btn-back">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            Back
+                        </button>
+                        <div class="user-identity">
+                            <div class="user-avatar" id="detail-avatar">?</div>
+                            <h2 id="detail-user-name">User Details</h2>
+                        </div>
                     </div>
                     
-                    <div class="grid-layout" style="margin-bottom: 2rem;">
+                    <div class="detail-grid">
                         <section class="card glass-effect">
                             <div class="card-header">
-                                <h2>Media Requests</h2>
+                                <h3>Media Requests</h3>
                                 <span class="badge" id="user-requests-count">0</span>
                             </div>
                             <div class="table-container">
@@ -119,7 +185,7 @@
 
                         <section class="card glass-effect">
                             <div class="card-header">
-                                <h2>User Feedback</h2>
+                                <h3>Feedback</h3>
                                 <span class="badge" id="user-feedback-count">0</span>
                             </div>
                             <div class="table-container">
@@ -131,9 +197,9 @@
                         </section>
                     </div>
 
-                    <section class="card glass-effect">
+                    <section class="card glass-effect" style="margin-top: 1.5rem;">
                         <div class="card-header">
-                            <h2>Interaction with Bot</h2>
+                            <h3>Bot Interactions</h3>
                             <span class="badge" id="user-llm-count">0</span>
                         </div>
                         <div class="table-container">
@@ -141,9 +207,9 @@
                                 <thead>
                                     <tr>
                                         <th>Date</th>
-                                        <th>User Message</th>
+                                        <th>Message</th>
                                         <th>Suggested Media</th>
-                                        <th>Message Classification</th>
+                                        <th>Intent</th>
                                     </tr>
                                 </thead>
                                 <tbody id="user-llm-tbody"></tbody>
@@ -152,26 +218,28 @@
                     </section>
                 </div>
                 
-                <!-- LLM Interactions Section -->
-                <div id="llm-interactions" class="tab-pane">
+                <!-- AI Activity Section -->
+                <div id="ai-activity" class="tab-pane">
                     <section class="card glass-effect">
                         <div class="card-header">
-                            <h2>LLM Interactions</h2>
+                            <h3>AI Activity Log</h3>
                             <span class="badge" id="llm-count">0</span>
                         </div>
                         <div class="table-container">
-                            <table class="data-table interactive-table" id="llm-table">
+                            <table class="data-table clickable-rows" id="llm-table">
                                 <thead>
                                     <tr>
                                         <th>Date</th>
-                                        <th>User ID</th>
-                                        <th>Model / Tokens</th>
+                                        <th>User</th>
+                                        <th>Intent</th>
+                                        <th>Model</th>
+                                        <th>Tokens</th>
                                         <th>Duration</th>
-                                        <th>Action</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody id="llm-tbody">
-                                    <tr><td colspan="5" class="loading-state">Loading...</td></tr>
+                                    <tr><td colspan="7" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -181,19 +249,25 @@
         </main>
     </div>
     
-    <!-- Modal for LLM Messages -->
+    <!-- Modal for LLM Conversation -->
     <div id="llm-modal" class="modal-overlay">
         <div class="modal-content glass-effect">
             <div class="modal-header">
-                <h2>LLM Conversation</h2>
-                <button class="modal-close" id="modal-close">&times;</button>
+                <h2>Conversation</h2>
+                <button class="modal-close" id="modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-meta" id="modal-meta">
+                <!-- Metadata bar rendered by JS -->
             </div>
             <div class="modal-body" id="modal-body">
-                <!-- Chat bubbles will go here -->
+                <!-- Chat bubbles rendered by JS -->
             </div>
         </div>
     </div>
     
-    <script type="module" src="/admin/static/app.js?v=8"></script>
+    <!-- Sidebar overlay for mobile -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <script type="module" src="/admin/static/app.js?v=9"></script>
 </body>
 </html>

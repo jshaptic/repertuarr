@@ -1,22 +1,20 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-23
-**Goal:** Introduce "Users" overview and detailed LLM message history modal.
-**Now:** Replaced individual Requests/Feedback tabs with a unified "Users" tab. Clicking a user opens a "User Details" page showing their requests, feedback, and suggested media from LLM interactions. The global LLM Interactions tab now opens a modal showing full prompt/chat history instead of cluttering columns.
-**Next:** Test the bot and the new UI locally.
+**Date:** 2026-06-24
+**Goal:** Complete admin UI/UX overhaul and fix missing assistant response in LLM conversation modal.
+**Now:** All three frontend files (HTML, CSS, JS) have been rewritten. Bug fix applied — `llm_response` is now rendered as an assistant bubble in the modal. Ready for manual verification.
+**Next:** Run the bot locally, verify `/admin` in browser — all tabs, modal, responsive.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[USER]` Requested removing some columns from LLM interactions and showing full messages in a modal, plus moving requests/feedback to a "User Details" view under a main "Users" tab.
-- `[CODE]` Implemented `get_users_summary` in `bot/database.py` to aggregate users across tables.
-- `[CODE]` Modified `bot/admin_ui.py` with `/admin/api/users` endpoint and `user_id` filters for existing endpoints.
-- `[CODE]` Overhauled `index.html`, `styles.css`, and `app.js` to implement the Users table, User Details view, and the LLM Messages Modal overlay.
+- `[CODE]` 2026-06-24 Rewrote `index.html` — branding → Repertuarr, nav labels (Dashboard/AI Activity), stat cards with icons, user avatar, mobile hamburger, modal metadata bar.
+- `[CODE]` 2026-06-24 Rewrote `styles.css` — accent color system (blue/emerald/amber/violet), left-border accents, custom scrollbars, pill labels, staggered animations, responsive sidebar.
+- `[CODE]` 2026-06-24 Rewrote `app.js` — fixed `openLlmModal()` to append `llm_response` as assistant bubble, added `formatAssistantResponse()` per intent, relative timestamps, empty states, mobile toggle, Escape key.
+- `[CODE]` 2026-06-23 Overhauled `index.html`, `styles.css`, and `app.js` to implement the Users table, User Details view, and the LLM Messages Modal overlay.
+- `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py` to aggregate users across tables.
 
 ## Working Set
-- `bot/database.py`
-- `bot/admin_ui.py`
-- `bot/webhook.py`
 - `bot/web/index.html`
 - `bot/web/styles.css`
 - `bot/web/app.js`
@@ -27,3 +25,4 @@
 - `D003 ACTIVE:` INQUIRY responses are parsed as structured `InquiryResponse`, returning a `reply_text` and an optional `items` list. If `items` is populated, a standard inline carousel with options to Add/Play is automatically displayed after the text reply.
 - `D004 ACTIVE:` Use `client.responses.parse()` API instead of `completion` API with `web_search_preview` tool for INQUIRY and RECOMMEND intents to properly support OpenAI's native web search capability.
 - `D005 ACTIVE:` Admin UI is served on the same `aiohttp` server as the webhook, and is unauthenticated by default. It uses Vanilla HTML/JS/CSS.
+- `D006 ACTIVE:` Admin UI branding renamed to "Repertuarr". Nav tabs: Dashboard, Users, AI Activity.
