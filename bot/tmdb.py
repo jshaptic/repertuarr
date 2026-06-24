@@ -22,6 +22,35 @@ class TmdbClient:
         self.tv_genres: Dict[str, int] = {}
         self.keyword_cache: Dict[str, int] = {}
         self.candidates_cache: Dict[str, tuple[float, List[dict]]] = {} # hash -> (timestamp, data)
+        self.db = None # Will be set by main app for logging
+
+    def _make_request(self, url: str, params: dict, timeout: int = 10) -> requests.Response:
+        logger.info(f"TMDB Request: GET {url} params={params}")
+        start_time = time.time()
+        error_msg = None
+        status_code = None
+        response_body = None
+        try:
+            resp = requests.get(url, headers=self.headers, params=params, timeout=timeout)
+            status_code = resp.status_code
+            response_body = resp.text
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            error_msg = str(e)
+            raise
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+            if self.db:
+                endpoint = url.replace(self.base_url, "")
+                self.db.log_tmdb_request(
+                    endpoint=endpoint,
+                    params=params,
+                    duration_ms=duration_ms,
+                    status_code=status_code,
+                    response_body=response_body,
+                    error=error_msg
+                )
         
     def initialize(self):
         """Fetch genre lists on startup."""
@@ -35,9 +64,7 @@ class TmdbClient:
     def _fetch_genres(self, media_type: str):
         url = f"{self.base_url}/genre/{media_type}/list"
         params = {"language": "en"}
-        logger.info(f"TMDB Request: GET {url} params={params}")
-        resp = requests.get(url, headers=self.headers, params=params, timeout=10)
-        resp.raise_for_status()
+        resp = self._make_request(url, params=params, timeout=10)
         
         genres_data = resp.json().get('genres', [])
         mapping = {g['name'].lower(): g['id'] for g in genres_data}
@@ -61,10 +88,8 @@ class TmdbClient:
             # Search TMDB for keyword
             url = f"{self.base_url}/search/keyword"
             params = {"query": kw, "page": 1}
-            logger.info(f"TMDB Request: GET {url} params={params}")
             try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=5)
-                resp.raise_for_status()
+                resp = self._make_request(url, params=params, timeout=5)
                 results = resp.json().get('results', [])
                 if results:
                     # Take the first exact match, or just the first result
@@ -95,7 +120,7 @@ class TmdbClient:
             })
         return mapped
 
-    def discover(self, filter_config: dict, language: str, media_type: str, pages: int = 2) -> List[dict]:
+    def discover(self, filter_config: dict, language: str, media_type: str, page: int = 1) -> List[dict]:
         """Discover items based on filter config."""
         if not filter_config:
             return []
@@ -163,64 +188,48 @@ class TmdbClient:
         if vote_count is not None:
             params["vote_count.gte"] = vote_count
             
-        all_items = []
-        for page in range(1, pages + 1):
-            params["page"] = page
-            logger.info(f"TMDB Request: GET {url} params={params}")
-            try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=10)
-                resp.raise_for_status()
-                results = resp.json().get('results', [])
-                if not results:
-                    break
-                all_items.extend(self._map_items(results, media_type))
-            except Exception as e:
-                logger.error(f"Error discovering {media_type}s on page {page}: {e}")
-                break
-                
-        return all_items
+        params["page"] = page
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            results = resp.json().get('results', [])
+            return self._map_items(results, media_type)
+        except Exception as e:
+            logger.error(f"Error discovering {media_type}s on page {page}: {e}")
+            return []
 
-    def get_popular(self, language: str, media_type: str, pages: int = 1) -> List[dict]:
+    def get_popular(self, language: str, media_type: str, page: int = 1) -> List[dict]:
         endpoint = "movie" if media_type == 'movie' else "tv"
         url = f"{self.base_url}/{endpoint}/popular"
         
-        all_items = []
-        for page in range(1, pages + 1):
-            params = {"language": language, "page": page}
-            logger.info(f"TMDB Request: GET {url} params={params}")
-            try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=10)
-                resp.raise_for_status()
-                results = resp.json().get('results', [])
-                all_items.extend(self._map_items(results, media_type))
-            except Exception as e:
-                logger.error(f"Error fetching popular {media_type}s: {e}")
-                break
-        return all_items
+        params = {"language": language, "page": page}
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            results = resp.json().get('results', [])
+            return self._map_items(results, media_type)
+        except Exception as e:
+            logger.error(f"Error fetching popular {media_type}s: {e}")
+            return []
         
-    def get_top_rated(self, language: str, media_type: str, pages: int = 1) -> List[dict]:
+    def get_top_rated(self, language: str, media_type: str, page: int = 1) -> List[dict]:
         endpoint = "movie" if media_type == 'movie' else "tv"
         url = f"{self.base_url}/{endpoint}/top_rated"
         
-        all_items = []
-        for page in range(1, pages + 1):
-            params = {"language": language, "page": page}
-            logger.info(f"TMDB Request: GET {url} params={params}")
-            try:
-                resp = requests.get(url, headers=self.headers, params=params, timeout=10)
-                resp.raise_for_status()
-                results = resp.json().get('results', [])
-                all_items.extend(self._map_items(results, media_type))
-            except Exception as e:
-                logger.error(f"Error fetching top rated {media_type}s: {e}")
-                break
-        return all_items
+        params = {"language": language, "page": page}
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            results = resp.json().get('results', [])
+            return self._map_items(results, media_type)
+        except Exception as e:
+            logger.error(f"Error fetching top rated {media_type}s: {e}")
+            return []
 
-    def get_candidates(self, filter_config: dict, language: str) -> List[dict]:
+    def get_candidates(self, filter_config: dict, language: str, excluded_tmdb_ids: list = None) -> List[dict]:
         """Orchestrator to get a combined pool of candidates."""
+        excluded_ids = set(excluded_tmdb_ids or [])
         
         # Check cache
-        cache_key_str = json.dumps(filter_config, sort_keys=True) + language
+        excluded_hash = hashlib.md5(",".join(sorted(excluded_ids)).encode('utf-8')).hexdigest()
+        cache_key_str = json.dumps(filter_config, sort_keys=True) + language + excluded_hash
         cache_key = hashlib.md5(cache_key_str.encode('utf-8')).hexdigest()
         
         if cache_key in self.candidates_cache:
@@ -232,41 +241,52 @@ class TmdbClient:
         logger.info("Fetching fresh TMDB candidates...")
         
         combined_items = []
+        seen = set()
+        
+        def fetch_until_quota(fetch_func, target_count: int, **kwargs):
+            results = []
+            for p in range(1, 6): # max 5 pages
+                if len(results) >= target_count:
+                    break
+                items = fetch_func(page=p, **kwargs)
+                if not items:
+                    break
+                for item in items:
+                    if str(item.get('id')) not in excluded_ids and item.get('id') and item.get('title'):
+                        # deduplicate globally
+                        key = (item['media_type'], item['id'])
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(item)
+                            if len(results) >= target_count:
+                                break
+            return results
+            
+        # Add popular and top rated
+        combined_items.extend(fetch_until_quota(self.get_popular, 8, language=language, media_type='movie'))
+        combined_items.extend(fetch_until_quota(self.get_popular, 7, language=language, media_type='tv'))
+        
+        combined_items.extend(fetch_until_quota(self.get_top_rated, 8, language=language, media_type='movie'))
+        combined_items.extend(fetch_until_quota(self.get_top_rated, 7, language=language, media_type='tv'))
         
         # Discover with filters
         if filter_config:
-            combined_items.extend(self.discover(filter_config, language, 'movie', pages=2))
-            combined_items.extend(self.discover(filter_config, language, 'tv', pages=2))
+            combined_items.extend(fetch_until_quota(self.discover, 35, filter_config=filter_config, language=language, media_type='movie'))
+            combined_items.extend(fetch_until_quota(self.discover, 35, filter_config=filter_config, language=language, media_type='tv'))
             
-        # Add popular and top rated (always good to have baseline trending stuff)
-        combined_items.extend(self.get_popular(language, 'movie', pages=1))
-        combined_items.extend(self.get_popular(language, 'tv', pages=1))
-        combined_items.extend(self.get_top_rated(language, 'movie', pages=1))
-        combined_items.extend(self.get_top_rated(language, 'tv', pages=1))
-        
-        # Deduplicate by (media_type, id)
-        seen = set()
         unique_items = []
         for item in combined_items:
-            # Skip invalid items
-            if not item.get('id') or not item.get('title'):
-                continue
-                
-            key = (item['media_type'], item['id'])
-            if key not in seen:
-                seen.add(key)
-                # Map genre names for display in prompt
-                genre_names = []
-                genre_map_inv = {v: k for k, v in (self.movie_genres.items() if item['media_type'] == 'movie' else self.tv_genres.items())}
-                for gid in item.get('genre_ids', []):
-                    if gid in genre_map_inv:
-                        genre_names.append(genre_map_inv[gid].title())
-                
-                item['genres'] = ", ".join(genre_names) if genre_names else "Unknown"
-                unique_items.append(item)
+            # Map genre names for display in prompt
+            genre_names = []
+            genre_map_inv = {v: k for k, v in (self.movie_genres.items() if item['media_type'] == 'movie' else self.tv_genres.items())}
+            for gid in item.get('genre_ids', []):
+                if gid in genre_map_inv:
+                    genre_names.append(genre_map_inv[gid].title())
+            
+            item['genres'] = ", ".join(genre_names) if genre_names else "Unknown"
+            unique_items.append(item)
                 
         # Sort by popularity or vote average (combining the two heuristically)
-        # We want highly rated and popular things to be near the top
         unique_items.sort(key=lambda x: (x.get('vote_average', 0) * 10) + x.get('popularity', 0), reverse=True)
         
         logger.info(f"TMDB fetched {len(unique_items)} unique candidates.")

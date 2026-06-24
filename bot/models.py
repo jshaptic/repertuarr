@@ -12,6 +12,7 @@ class RecommendationItem(BaseModel):
     original_title: str = Field(description="Original title of the movie/show in its original language (usually English), used for database lookups")
     year: int = Field(description="Release year")
     overview: str = Field(description="Short overview/synopsis in the user's language")
+    tmdb_id: Optional[int] = Field(default=None, description="TMDB ID of the movie/show. Omit if unknown.")
 
 class RecommendationResponse(BaseModel):
     items: List[RecommendationItem] = Field(description="List of recommended items")

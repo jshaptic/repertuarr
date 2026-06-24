@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabSubtitles = {
         'dashboard': 'System overview',
         'users': 'Manage bot users',
-        'ai-activity': 'LLM calls & conversations',
+        'logs': 'System logs & activity',
         'user-details': 'User profile'
     };
 
@@ -69,8 +69,13 @@ document.addEventListener('DOMContentLoaded', () => {
     detailTabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const targetId = tab.getAttribute('data-detail-target');
-            detailTabs.forEach(t => t.classList.remove('active'));
-            detailPanes.forEach(p => p.classList.remove('active'));
+            const parentPane = tab.closest('.tab-pane');
+            const siblingTabs = parentPane.querySelectorAll('.detail-tab');
+            const siblingPanes = parentPane.querySelectorAll('.detail-tab-pane');
+            
+            siblingTabs.forEach(t => t.classList.remove('active'));
+            siblingPanes.forEach(p => p.classList.remove('active'));
+            
             tab.classList.add('active');
             document.getElementById(targetId).classList.add('active');
         });
@@ -105,16 +110,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchData() {
         try {
-            const [usersRes, llmRes] = await Promise.all([
+            const [usersRes, llmRes, tmdbRes] = await Promise.all([
                 fetch('/admin/api/users'),
-                fetch('/admin/api/llm-logs')
+                fetch('/admin/api/llm-logs'),
+                fetch('/admin/api/tmdb-logs')
             ]);
 
             const users = await usersRes.json();
             const llmLogs = await llmRes.json();
+            const tmdbLogs = await tmdbRes.json();
 
             renderUsers(users);
             renderGlobalLlmLogs(llmLogs);
+            renderTmdbLogs(tmdbLogs);
 
             // Update dashboard stats
             document.getElementById('stat-users').textContent = users.length || 0;
@@ -138,10 +146,13 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTabSubtitle.textContent = 'User profile';
 
         // Reset sub-tabs to Conversations
-        detailTabs.forEach(t => t.classList.remove('active'));
-        detailPanes.forEach(p => p.classList.remove('active'));
-        detailTabs[0].classList.add('active');
-        detailPanes[0].classList.add('active');
+        const userPane = document.getElementById('user-details');
+        const userDetailTabs = userPane.querySelectorAll('.detail-tab');
+        const userDetailPanes = userPane.querySelectorAll('.detail-tab-pane');
+        userDetailTabs.forEach(t => t.classList.remove('active'));
+        userDetailPanes.forEach(p => p.classList.remove('active'));
+        if (userDetailTabs.length > 0) userDetailTabs[0].classList.add('active');
+        if (userDetailPanes.length > 0) userDetailPanes[0].classList.add('active');
 
         // Set avatar initials
         const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2);
@@ -419,6 +430,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Render: TMDB Logs table ────────────────────────────────────
+    function renderTmdbLogs(data) {
+        document.getElementById('tmdb-count').textContent = data.length || 0;
+        const tbody = document.getElementById('tmdb-tbody');
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = emptyRow(5, 'No TMDB activity yet');
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+            
+            // Status pill
+            const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
+            
+            tr.innerHTML = `
+                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
+                <td style="color:var(--text-primary);font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.endpoint)}">${escapeHtml(item.endpoint || '—')}</td>
+                <td><span class="pill ${statusClass}">${item.status_code || 'Error'}</span></td>
+                <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
+                <td>
+                    <button class="btn-view" title="View details">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                </td>
+            `;
+            tr.addEventListener('click', () => openTmdbModal(item));
+            tbody.appendChild(tr);
+        });
+    }
+
     // ── Modal Logic ─────────────────────────────────────────────────
     modalCloseBtn.addEventListener('click', () => modal.classList.remove('open'));
     modal.addEventListener('click', (e) => {
@@ -480,6 +524,42 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show the raw response as-is (no formatting/pretty-printing)
         if (logItem.llm_response) {
             modalBody.appendChild(createChatBubble('assistant', logItem.llm_response));
+        }
+
+        modal.classList.add('open');
+    }
+
+    function openTmdbModal(item) {
+        // Render metadata bar
+        const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
+        modalMeta.innerHTML = `
+            <div class="meta-item"><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${item.status_code || 'Error'}</span></div>
+            <div class="meta-item"><strong>Duration:</strong> ${formatDuration(item.duration_ms)}</div>
+        `;
+
+        // Render request/response in modal
+        modalBody.innerHTML = '';
+        
+        let formattedParams = item.params || 'None';
+        try {
+            if (item.params) {
+                formattedParams = JSON.stringify(JSON.parse(item.params), null, 2);
+            }
+        } catch (e) {}
+
+        let formattedBody = item.response_body || '';
+        try {
+            if (item.response_body) {
+                formattedBody = JSON.stringify(JSON.parse(item.response_body), null, 2);
+            }
+        } catch (e) {}
+
+        modalBody.appendChild(createChatBubble('user', `Endpoint: ${item.endpoint}\n\nParams:\n${formattedParams}`));
+        
+        if (item.error) {
+            modalBody.appendChild(createChatBubble('assistant', `Error:\n${item.error}`));
+        } else if (formattedBody) {
+            modalBody.appendChild(createChatBubble('assistant', formattedBody));
         }
 
         modal.classList.add('open');

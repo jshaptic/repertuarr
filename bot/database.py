@@ -100,6 +100,25 @@ class Database:
             ON llm_logs(created_at)
         """)
         
+        # TMDB Logs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tmdb_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                endpoint TEXT,
+                params TEXT,
+                duration_ms INTEGER,
+                status_code INTEGER,
+                response_body TEXT,
+                error TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tmdb_logs_created
+            ON tmdb_logs(created_at)
+        """)
+        
         conn.commit()
         conn.close()
         logger.info(f"Database initialized at {self.db_path}")
@@ -239,6 +258,55 @@ class Database:
         conn.close()
         
         return result is not None
+    
+    # ── TMDB Logs ───────────────────────────────────────────────────
+    
+    def log_tmdb_request(self, endpoint: str, params: Optional[dict] = None, duration_ms: Optional[int] = None,
+                         status_code: Optional[int] = None, response_body: Optional[str] = None,
+                         error: Optional[str] = None):
+        """Log a TMDB API request and response"""
+        import json
+        params_str = json.dumps(params) if params else None
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO tmdb_logs (
+                    endpoint, params, duration_ms, status_code, response_body, error, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                endpoint,
+                params_str,
+                duration_ms,
+                status_code,
+                response_body,
+                error,
+                datetime.now()
+            ))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to log TMDB request: {e}")
+        finally:
+            conn.close()
+
+    def get_tmdb_logs(self, limit: int = 100) -> List[dict]:
+        """Get recent TMDB logs"""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT * FROM tmdb_logs
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        
+        logs = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return logs
     
     # ── Media request methods ─────────────────────────────────────────
     

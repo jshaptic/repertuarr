@@ -55,6 +55,11 @@ def register_handlers(app: Application, config: dict, auth_func):
     # Initialize database
     db = Database()
     
+    # Wire database to TMDB client for logging
+    tmdb_client = config.get('tmdb_client')
+    if tmdb_client:
+        tmdb_client.db = db
+    
     # Initialize Jellyfin client if configured
     jellyfin_client = None
     jellyfin_url = config.get('jellyfin_url')
@@ -292,17 +297,9 @@ def register_handlers(app: Application, config: dict, auth_func):
              tmdb_candidates_data = []
              if tmdb_client:
                  discovery_filter = user_prefs.get('discovery_filter', {})
-                 tmdb_candidates_list = tmdb_client.get_candidates(discovery_filter, user_lang)
+                 excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id)
+                 tmdb_candidates_list = tmdb_client.get_candidates(discovery_filter, user_lang, excluded_tmdb_ids)
                  if tmdb_candidates_list:
-                     # Filter out content the user has already watched/disliked/ignored by TMDB ID
-                     excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id)
-                     if excluded_tmdb_ids:
-                         pre_filter_count = len(tmdb_candidates_list)
-                         tmdb_candidates_list = [
-                             c for c in tmdb_candidates_list 
-                             if str(c.get('id', '')) not in excluded_tmdb_ids
-                         ]
-                         logger.info(f"Filtered TMDB candidates: {pre_filter_count} -> {len(tmdb_candidates_list)} (excluded {pre_filter_count - len(tmdb_candidates_list)} by TMDB ID)")
                      tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              
              prompt = load_prompt("recommendation", 

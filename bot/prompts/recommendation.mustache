@@ -27,10 +27,10 @@ Guidelines:
 {{#tmdb_candidates}}
 ## Trending & Matching Content (from TMDB)
 The following movies and TV shows match the user's preferences and are currently trending or highly rated.
-You SHOULD prioritize picking from this pool, but you MAY also suggest items outside it if they are an excellent fit.
+You MUST ONLY recommend items from this provided candidates list. DO NOT invent anything else or suggest items not on this list.
 
 {{#items}}
-- {{title}} ({{original_title}}) — {{media_type}}, {{year}}, Score: {{vote_average}}/10, Genres: {{genres}}
+- {{title}} ({{original_title}}) — {{media_type}}, {{year}}, TMDB ID: {{id}}, Score: {{vote_average}}/10, Genres: {{genres}}
 {{/items}}
 {{/tmdb_candidates}}
 

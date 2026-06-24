@@ -41,6 +41,15 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
         except Exception as e:
             logger.error(f"Error fetching LLM logs: {e}")
             return web.json_response({"error": str(e)}, status=500)
+
+    async def api_tmdb_logs(request):
+        try:
+            limit = int(request.query.get('limit', 100))
+            rows = db.get_tmdb_logs(limit=limit)
+            return web.json_response(rows)
+        except Exception as e:
+            logger.error(f"Error fetching TMDB logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
             
     async def api_users(request):
         try:
@@ -95,6 +104,7 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
     app.router.add_get('/admin/api/requests', api_requests)
     app.router.add_get('/admin/api/feedback', api_feedback)
     app.router.add_get('/admin/api/llm-logs', api_llm_logs)
+    app.router.add_get('/admin/api/tmdb-logs', api_tmdb_logs)
     app.router.add_get('/admin/api/users', api_users)
     app.router.add_get('/admin/api/media-library', api_media_library)
     
