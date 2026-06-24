@@ -775,6 +775,7 @@ body {
 
 .chat-assistant {
     align-self: flex-start;
+    max-width: 100%;
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;

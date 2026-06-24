@@ -391,12 +391,9 @@ document.addEventListener('DOMContentLoaded', () => {
             modalBody.appendChild(createChatBubble(msg.role || 'unknown', msg.content || ''));
         });
 
-        // ── BUG FIX: Append the assistant's response ──
-        // Previously only llm_request was rendered, cutting off the conversation
-        // before the assistant's answer. Now we parse llm_response and show it.
+        // Show the raw response as-is (no formatting/pretty-printing)
         if (logItem.llm_response) {
-            const assistantText = formatAssistantResponse(logItem.llm_response, logItem.intent);
-            modalBody.appendChild(createChatBubble('assistant', assistantText));
+            modalBody.appendChild(createChatBubble('assistant', logItem.llm_response));
         }
 
         modal.classList.add('open');
@@ -411,7 +408,12 @@ document.addEventListener('DOMContentLoaded', () => {
         roleLabel.className = 'chat-role';
         roleLabel.textContent = role;
 
-        const body = document.createElement('div');
+        const body = document.createElement('pre');
+        body.style.whiteSpace = 'pre-wrap';
+        body.style.wordBreak = 'break-word';
+        body.style.margin = '0';
+        body.style.fontFamily = 'inherit';
+        body.style.fontSize = 'inherit';
         body.textContent = content;
 
         div.appendChild(roleLabel);
@@ -419,48 +421,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return div;
     }
 
-    /**
-     * Format the llm_response field into a human-readable string for the
-     * assistant bubble. The response is stored differently per intent:
-     *
-     *  - CLASSIFY_INTENT: { intent, query }
-     *  - INQUIRY:         { reply_text, items? }
-     *  - RECOMMEND:       { items: [{ title, year, ... }] }
-     */
-    function formatAssistantResponse(rawResponse, intent) {
-        try {
-            const parsed = JSON.parse(rawResponse);
 
-            if (intent === 'CLASSIFY_INTENT') {
-                return `Intent: ${parsed.intent || '—'}\nQuery: ${parsed.query || '—'}`;
-            }
-
-            if (intent === 'INQUIRY') {
-                let text = parsed.reply_text || '';
-                if (parsed.items && parsed.items.length > 0) {
-                    text += '\n\nSuggested media:\n' + parsed.items.map((m, i) =>
-                        `  ${i + 1}. ${m.title || 'Unknown'}${m.year ? ` (${m.year})` : ''}`
-                    ).join('\n');
-                }
-                return text || JSON.stringify(parsed, null, 2);
-            }
-
-            if (intent === 'RECOMMEND') {
-                if (parsed.items && parsed.items.length > 0) {
-                    return 'Recommended media:\n' + parsed.items.map((m, i) =>
-                        `  ${i + 1}. ${m.title || 'Unknown'}${m.year ? ` (${m.year})` : ''}`
-                    ).join('\n');
-                }
-                return JSON.stringify(parsed, null, 2);
-            }
-
-            // Fallback: pretty-print JSON
-            return JSON.stringify(parsed, null, 2);
-        } catch (e) {
-            // Not JSON — return as-is
-            return rawResponse;
-        }
-    }
 
     // ── Utilities ───────────────────────────────────────────────────
     function escapeHtml(unsafe) {
