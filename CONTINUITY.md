@@ -2,12 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-24
-**Goal:** Rework User Details page — replace stacked tables with tabbed sub-navigation, add expandable suggested media sub-tables.
-**Now:** Implemented tabbed layout (Conversations / Requests / Feedback) with expandable conversation rows showing nested suggested media tables.
-**Next:** Deploy and manually verify the new layout works end-to-end.
+**Goal:** Integrate TMDB service to fetch movies and TV shows based on user preferences and feed them to the LLM for better recommendations.
+**Now:** Added `bot/tmdb.py` to fetch TMDB content with user-defined filters (`discovery_filter`). Updated LLM prompt and recommendation flow to include TMDB candidates.
+**Next:** Test TMDB fetching and LLM response curation with valid TMDB API key.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-24 Added TMDB integration: `bot/tmdb.py` client, `discovery_filter` in `config.yaml`, updated `recommendation.mustache` and `telegram_bot.py`.
 - `[CODE]` 2026-06-24 Reworked User Details page — replaced 3 stacked tables with tabbed sub-navigation (Conversations/Requests/Feedback) in `index.html`, `app.js`, `styles.css`.
 - `[CODE]` 2026-06-24 Added expandable conversation rows with nested suggested media sub-table (Title, Original Title, Type, Year).
 - `[CODE]` 2026-06-24 Fixed "Bot Iteraction" typo → renamed to "Conversations".
@@ -29,3 +30,4 @@
 - `D006 ACTIVE:` Admin UI branding renamed to "Repertuarr".
 - `D007 ACTIVE:` LLM returns `original_title` alongside localized `title`; Radarr/Sonarr lookups use `original_title`, Telegram display uses localized `title`/`overview`.
 - `D008 ACTIVE:` User Details page uses tabbed sub-navigation instead of stacked tables; Conversations tab has expandable rows with nested suggested media sub-tables.
+- `D009 ACTIVE:` Integrate TMDB Discover APIs to fetch pre-filtered candidate pool of media based on user's `discovery_filter`, then pass to LLM as candidates.

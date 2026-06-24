@@ -4,12 +4,14 @@ import yaml
 from telegram.ext import ApplicationBuilder, PicklePersistence
 from bot import telegram_bot
 from bot.webhook import start_webhook_server
+from bot.tmdb import TmdbClient
 
 # Configure Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +107,15 @@ async def main():
         'radarrs': radarrs_map,
         'sonarrs': sonarrs_map,
     }
+
+    # Initialize TMDB Client if configured
+    tmdb_config = config.get('tmdb')
+    if tmdb_config and tmdb_config.get('bearer_token'):
+        tmdb_client = TmdbClient(tmdb_config['bearer_token'])
+        tmdb_client.initialize()
+        bot_config['tmdb_client'] = tmdb_client
+    else:
+        logger.warning("No TMDB config or bearer_token found. TMDB discovery will be disabled.")
 
     app_telegram = None
     webhook_runner = None

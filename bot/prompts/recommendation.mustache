@@ -22,6 +22,16 @@ Guidelines:
 {{user_guidelines}}
 {{/user_guidelines}}
 
+{{#tmdb_candidates}}
+## Trending & Matching Content (from TMDB)
+The following movies and TV shows match the user's preferences and are currently trending or highly rated.
+You SHOULD prioritize picking from this pool, but you MAY also suggest items outside it if they are an excellent fit.
+
+{{#items}}
+- {{title}} ({{original_title}}) — {{media_type}}, {{year}}, Score: {{vote_average}}/10, Genres: {{genres}}
+{{/items}}
+{{/tmdb_candidates}}
+
 {{#language}}
 IMPORTANT: Generate `title` and `overview` in {{language}} language.
 Always provide the `original_title` field in the media's original language (usually English) — this is used for database lookups.

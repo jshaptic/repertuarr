@@ -65,6 +65,12 @@ def register_handlers(app: Application, config: dict, auth_func):
     else:
         logger.info("Jellyfin not configured, skipping watch history sync")
 
+    tmdb_client = config.get('tmdb_client')
+    if tmdb_client:
+        logger.info("TMDB client initialized")
+    else:
+        logger.info("TMDB not configured, skipping discovery filtering")
+
     def resolve_arr(user_info: dict, media_type: str):
         """Return (url, key) for the user's configured Radarr or Sonarr instance."""
         arr_key = 'radarr' if media_type == 'movie' else 'sonarr'
@@ -283,12 +289,20 @@ def register_handlers(app: Application, config: dict, auth_func):
                  logger.info(f"Merged Jellyfin watched items: {len(jellyfin_watched)} from Jellyfin, {len(watched_titles)} total")
              
              # Ask LLM for list with user context
+             tmdb_candidates_data = []
+             if tmdb_client:
+                 discovery_filter = user_prefs.get('discovery_filter', {})
+                 tmdb_candidates_list = tmdb_client.get_candidates(discovery_filter, user_lang)
+                 if tmdb_candidates_list:
+                     tmdb_candidates_data = [{"items": tmdb_candidates_list}]
+             
              prompt = load_prompt("recommendation", 
                                 query=query, 
                                 user_name=user_name,
                                 language=user_lang,
                                 user_preferences=user_preferences,
                                 user_guidelines=user_guidelines,
+                                tmdb_candidates=tmdb_candidates_data,
                                 watched_list=', '.join(watched_titles[:20]) if watched_titles else '',
                                 disliked_list=', '.join(disliked_titles[:20]) if disliked_titles else '')
              logger.info(f"Sending LLM Request (Recommend): {prompt}")
