@@ -3,11 +3,14 @@
 ## Snapshot
 **Date:** 2026-06-25
 **Goal:** LLM cost tracking — per-LLM pricing in config, cost per AI request in Logs, aggregated per user.
-**Now:** Implementation complete — pricing module, DB columns, logging pipeline, admin UI cost columns.
+**Now:** Sessions table shows user names, session ID, and status on each row (not in expand).
 **Next:** Add `pricing` blocks to local `config.yaml` and verify with live bot traffic.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-26 Sessions table: user display names; session ID + status on row (removed from expand meta).
+- `[CODE]` 2026-06-25 TMDB logs: user column via session join; modal shows HTTP request/response blocks instead of chat-style user/assistant bubbles.
+- `[CODE]` 2026-06-25 AI Activity table: user display names instead of IDs; prompts shown as plain text (no color pills).
 - `[CODE]` 2026-06-25 LLM cost tracking: `bot/llm_pricing.py`, pricing in `llms[].pricing`, token breakdown + `cost_usd` on `llm_logs`, cost in Logs (Sessions/AI Activity/modal) and Users aggregate.
 - `[CODE]` 2026-06-25 Admin Logs sessions refactor: `sessions` table, session_id on llm/tmdb logs, prompt_name + raw_request/raw_response on LLM logs, Sessions tab in admin UI, Processed/Raw modal tabs.
 - `[CODE]` 2026-06-25 Added `tmdb_id` to `RecommendationItem` in `models.py` and to the `recommendation.mustache` prompt template.

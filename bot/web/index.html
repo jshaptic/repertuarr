@@ -267,16 +267,15 @@
                                             <th style="width:20px"></th>
                                             <th>Date</th>
                                             <th>User</th>
+                                            <th>Session</th>
+                                            <th>Status</th>
                                             <th>Message</th>
-                                            <th>Intent</th>
-                                            <th>AI</th>
-                                            <th>TMDB</th>
                                             <th>Duration</th>
                                             <th>Cost</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sessions-tbody">
-                                        <tr><td colspan="9" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Loading sessions…</span></div></td></tr>
+                                        <tr><td colspan="8" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Loading sessions…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -317,6 +316,7 @@
                                     <thead>
                                         <tr>
                                             <th>Date</th>
+                                            <th>User</th>
                                             <th>Endpoint</th>
                                             <th>Session</th>
                                             <th>Status</th>
@@ -325,7 +325,7 @@
                                         </tr>
                                     </thead>
                                     <tbody id="tmdb-tbody">
-                                        <tr><td colspan="6" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Loading TMDB logs…</span></div></td></tr>
+                                        <tr><td colspan="7" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Loading TMDB logs…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -359,6 +359,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=15"></script>
+    <script type="module" src="/admin/static/app.js?v=17"></script>
 </body>
 </html>

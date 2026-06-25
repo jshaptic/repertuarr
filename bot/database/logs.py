@@ -144,8 +144,6 @@ class LogMixin:
         if user_id:
             cursor.execute("""
                 SELECT s.*,
-                       (SELECT COUNT(*) FROM llm_logs WHERE session_id = s.id) AS llm_count,
-                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count,
                        (SELECT COALESCE(SUM(cost_usd), 0) FROM llm_logs WHERE session_id = s.id) AS llm_cost_usd
                 FROM sessions s
                 WHERE s.user_id = ?
@@ -155,8 +153,6 @@ class LogMixin:
         else:
             cursor.execute("""
                 SELECT s.*,
-                       (SELECT COUNT(*) FROM llm_logs WHERE session_id = s.id) AS llm_count,
-                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count,
                        (SELECT COALESCE(SUM(cost_usd), 0) FROM llm_logs WHERE session_id = s.id) AS llm_cost_usd
                 FROM sessions s
                 ORDER BY s.created_at DESC
@@ -318,14 +314,16 @@ class LogMixin:
             conn.close()
 
     def get_tmdb_logs(self, limit: int = 100) -> List[dict]:
-        """Get recent TMDB logs."""
+        """Get recent TMDB logs with user_id resolved via session."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT * FROM tmdb_logs
-            ORDER BY created_at DESC
+            SELECT t.*, s.user_id
+            FROM tmdb_logs t
+            LEFT JOIN sessions s ON s.id = t.session_id
+            ORDER BY t.created_at DESC
             LIMIT ?
         """, (limit,))
 

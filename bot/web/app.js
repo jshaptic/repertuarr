@@ -111,18 +111,17 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarOverlay.addEventListener('click', closeMobileSidebar);
 
     // ── Data fetching ───────────────────────────────────────────────
-    let refreshInterval = setInterval(fetchData, 30000);
-
     refreshBtn.addEventListener('click', () => {
         refreshIcon.classList.add('spin-anim');
         fetchData().finally(() => {
             setTimeout(() => refreshIcon.classList.remove('spin-anim'), 500);
         });
-        clearInterval(refreshInterval);
-        refreshInterval = setInterval(fetchData, 30000);
     });
 
     fetchData();
+
+    /** user_id → display name from the last users fetch. */
+    let userNameById = {};
 
     async function fetchData() {
         try {
@@ -137,6 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const llmLogs = await llmRes.json();
             const tmdbLogs = await tmdbRes.json();
             const sessions = await sessionsRes.json();
+
+            userNameById = Object.fromEntries(
+                users.map(u => [u.user_id, u.name || String(u.user_id)])
+            );
 
             renderUsers(users);
             renderSessions(sessions);
@@ -264,21 +267,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return map[promptName] || 'pill-muted';
     }
 
-    /** Pick a pill color class based on a detected intent string. */
-    function intentPillClass(intent) {
-        const map = {
-            'RECOMMEND': 'pill-violet',
-            'ADD_MEDIA': 'pill-emerald',
-            'INQUIRY': 'pill-blue',
-            'CLASSIFY_INTENT': 'pill-muted'
-        };
-        return map[intent] || 'pill-muted';
-    }
-
     /** Short display form of a session UUID. */
     function shortSessionId(sessionId) {
         if (!sessionId) return '—';
         return sessionId.slice(0, 8);
+    }
+
+    /** Resolve a user display name from the users cache. */
+    function userDisplayName(userId) {
+        if (userId == null || userId === '') return '—';
+        return userNameById[userId] || String(userId);
+    }
+
+    /** Pick a pill color class for a session status. */
+    function sessionStatusPillClass(status) {
+        if (status === 'failed') return 'pill-rose';
+        if (status === 'in_progress') return 'pill-amber';
+        return 'pill-emerald';
     }
 
     /** Resolve prompt name from a log row (new or legacy). */
@@ -472,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Render: Sessions table ─────────────────────────────────────
-    const SESSION_COLSPAN = 9;
+    const SESSION_COLSPAN = 8;
     const chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
 
     function buildSessionTimelineElement(detail) {
@@ -525,7 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
-                    openTmdbModal(log);
+                    openTmdbModal({ ...log, user_id: detail.session.user_id });
                 });
             }
 
@@ -541,16 +546,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch(`/admin/api/sessions/${sessionId}`);
             if (!res.ok) throw new Error('Session not found');
             const detail = await res.json();
-            const session = detail.session;
-            const statusClass = session.status === 'failed' ? 'pill-rose' : 'pill-emerald';
-
             const inner = document.createElement('div');
             inner.className = 'expanded-inner';
             inner.innerHTML = `
-                <div class="session-expand-meta">
-                    <span><strong>ID:</strong> <code>${escapeHtml(session.id)}</code></span>
-                    <span><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${escapeHtml(session.status || '—')}</span></span>
-                </div>
                 <h4>Calls (${(detail.llm_logs.length + detail.tmdb_logs.length)})</h4>
             `;
             inner.appendChild(buildSessionTimelineElement(detail));
@@ -619,14 +617,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const mainRow = document.createElement('tr');
             mainRow.className = 'expandable-row';
             mainRow.dataset.sessionId = item.id;
+            const statusClass = sessionStatusPillClass(item.status);
             mainRow.innerHTML = `
                 <td><span class="expand-chevron">${chevronSvg}</span></td>
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="color:var(--text-primary);font-weight:500">${item.user_id || '—'}</td>
+                <td style="color:var(--text-primary);font-weight:500">${escapeHtml(userDisplayName(item.user_id))}</td>
+                <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.id || '')}">${escapeHtml(shortSessionId(item.id))}</td>
+                <td><span class="pill ${statusClass}" style="font-size:0.625rem">${escapeHtml(item.status || '—')}</span></td>
                 <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
-                <td><span class="pill ${intentPillClass(item.detected_intent)}">${escapeHtml(item.detected_intent || '—')}</span></td>
-                <td style="font-size:0.75rem;font-weight:600">${item.llm_count ?? 0}</td>
-                <td style="font-size:0.75rem;font-weight:600">${item.tmdb_count ?? 0}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
                 <td style="font-size:0.75rem;font-weight:600">${formatCost(item.llm_cost_usd)}</td>
             `;
@@ -665,8 +663,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="color:var(--text-primary);font-weight:500">${item.user_id || '—'}</td>
-                <td><span class="pill ${promptPillClass(promptName)}">${escapeHtml(promptName)}</span></td>
+                <td style="color:var(--text-primary);font-weight:500">${escapeHtml(userDisplayName(item.user_id))}</td>
+                <td>${escapeHtml(promptName)}</td>
                 <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
                 <td style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(item.model || '—')}</td>
                 <td style="font-size:0.75rem;font-weight:600">${formatTokenBreakdown(item)}</td>
@@ -702,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('tmdb-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(6, 'No TMDB activity yet');
+            tbody.innerHTML = emptyRow(7, 'No TMDB activity yet');
             return;
         }
 
@@ -715,6 +713,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             tr.innerHTML = `
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
+                <td style="color:var(--text-primary);font-weight:500">${escapeHtml(userDisplayName(item.user_id))}</td>
                 <td style="color:var(--text-primary);font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.endpoint)}">${escapeHtml(item.endpoint || '—')}</td>
                 <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
                 <td><span class="pill ${statusClass}">${item.status_code || 'Error'}</span></td>
@@ -726,7 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             `;
             tr.addEventListener('click', () => openTmdbModal(item));
-            const sessionCell = tr.children[2];
+            const sessionCell = tr.children[3];
             if (item.session_id) {
                 sessionCell.style.cursor = 'pointer';
                 sessionCell.style.color = 'var(--accent-blue)';
@@ -846,33 +845,23 @@ document.addEventListener('DOMContentLoaded', () => {
         setModalTabVisibility(false);
         const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
         modalMeta.innerHTML = `
+            <div class="meta-item"><strong>User:</strong> ${escapeHtml(userDisplayName(item.user_id))}</div>
+            <div class="meta-item"><strong>Endpoint:</strong> <code style="font-size:0.75rem">${escapeHtml(item.endpoint || '—')}</code></div>
             <div class="meta-item"><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${item.status_code || 'Error'}</span></div>
             <div class="meta-item"><strong>Duration:</strong> ${formatDuration(item.duration_ms)}</div>
         `;
 
-        // Render request/response in modal
         modalBody.innerHTML = '';
-        
-        let formattedParams = item.params || 'None';
-        try {
-            if (item.params) {
-                formattedParams = JSON.stringify(JSON.parse(item.params), null, 2);
-            }
-        } catch (e) {}
 
-        let formattedBody = item.response_body || '';
-        try {
-            if (item.response_body) {
-                formattedBody = JSON.stringify(JSON.parse(item.response_body), null, 2);
-            }
-        } catch (e) {}
+        const paramsText = item.params ? formatJsonBlock(item.params) : 'None';
+        modalBody.appendChild(createChatBubble('request', `GET ${item.endpoint || ''}\n\nParams:\n${paramsText}`));
 
-        modalBody.appendChild(createChatBubble('user', `Endpoint: ${item.endpoint}\n\nParams:\n${formattedParams}`));
-        
         if (item.error) {
-            modalBody.appendChild(createChatBubble('assistant', `Error:\n${item.error}`));
-        } else if (formattedBody) {
-            modalBody.appendChild(createChatBubble('assistant', formattedBody));
+            modalBody.appendChild(createChatBubble('error', item.error));
+        } else if (item.response_body) {
+            modalBody.appendChild(createChatBubble('response', formatJsonBlock(item.response_body)));
+        } else {
+            modalBody.appendChild(createChatBubble('response', '(empty response)'));
         }
 
         modal.classList.add('open');
