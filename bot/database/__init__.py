@@ -1,25 +1,34 @@
+"""
+SQLite persistence layer for user feedback, media requests, and admin activity logs.
+
+The Database class owns schema initialization and CRUD for feedback/requests.
+Session and log methods live in bot.database.logs.LogMixin.
+"""
+
 import sqlite3
 import logging
 from datetime import datetime
 from typing import List, Optional, Literal
 import os
 
+from bot.database.logs import LogMixin
+
 logger = logging.getLogger(__name__)
 
 FeedbackType = Literal['watched', 'disliked', 'ignored']
 
-class Database:
+
+class Database(LogMixin):
     def __init__(self, db_path: str = "data/media_bot.db"):
         self.db_path = db_path
-        # Ensure data directory exists
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_db()
-    
+
     def _init_db(self):
         """Initialize database schema"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_content_feedback (
                 user_id INTEGER NOT NULL,
@@ -31,14 +40,12 @@ class Database:
                 PRIMARY KEY (user_id, content_id, feedback_type)
             )
         """)
-        
-        # Create index for faster queries
+
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_feedback 
+            CREATE INDEX IF NOT EXISTS idx_user_feedback
             ON user_content_feedback(user_id, feedback_type)
         """)
-        
-        # Media requests table — tracks which user requested which media
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS media_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,78 +60,31 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Migration: add chat_id and message_id if missing (existing DBs)
-        try:
-            cursor.execute("ALTER TABLE media_requests ADD COLUMN chat_id INTEGER")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            cursor.execute("ALTER TABLE media_requests ADD COLUMN message_id INTEGER")
-        except sqlite3.OperationalError:
-            pass
-        
-        # Migration: add tmdb_id and tvdb_id to user_content_feedback (existing DBs)
-        try:
-            cursor.execute("ALTER TABLE user_content_feedback ADD COLUMN tmdb_id TEXT")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            cursor.execute("ALTER TABLE user_content_feedback ADD COLUMN tvdb_id TEXT")
-        except sqlite3.OperationalError:
-            pass
-        
+
+        for stmt in (
+            "ALTER TABLE media_requests ADD COLUMN chat_id INTEGER",
+            "ALTER TABLE media_requests ADD COLUMN message_id INTEGER",
+            "ALTER TABLE user_content_feedback ADD COLUMN tmdb_id TEXT",
+            "ALTER TABLE user_content_feedback ADD COLUMN tvdb_id TEXT",
+        ):
+            try:
+                cursor.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
+
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_media_requests_status
             ON media_requests(status)
         """)
-        
-        # LLM Logs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS llm_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                user_message TEXT,
-                intent TEXT,
-                llm_request TEXT,
-                llm_response TEXT,
-                duration_ms INTEGER,
-                model TEXT,
-                tokens INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_llm_logs_created
-            ON llm_logs(created_at)
-        """)
-        
-        # TMDB Logs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tmdb_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                endpoint TEXT,
-                params TEXT,
-                duration_ms INTEGER,
-                status_code INTEGER,
-                response_body TEXT,
-                error TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tmdb_logs_created
-            ON tmdb_logs(created_at)
-        """)
-        
+
+        self._init_log_schema(cursor)
+
         conn.commit()
         conn.close()
         logger.info(f"Database initialized at {self.db_path}")
-    
+
     # ── Content feedback methods ──────────────────────────────────────
-    
+
     def add_feedback(
         self,
         user_id: int,
@@ -138,17 +98,17 @@ class Database:
         """Add or update user feedback for content"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            INSERT OR REPLACE INTO user_content_feedback 
+            INSERT OR REPLACE INTO user_content_feedback
             (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, datetime.now()))
-        
+
         conn.commit()
         conn.close()
         logger.info(f"Added {feedback_type} feedback for user {user_id}, content {content_id}")
-    
+
     def get_user_feedback(
         self,
         user_id: int,
@@ -158,87 +118,86 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         if feedback_type:
             cursor.execute("""
-                SELECT * FROM user_content_feedback 
+                SELECT * FROM user_content_feedback
                 WHERE user_id = ? AND feedback_type = ?
             """, (user_id, feedback_type))
         else:
             cursor.execute("""
-                SELECT * FROM user_content_feedback 
+                SELECT * FROM user_content_feedback
                 WHERE user_id = ?
             """, (user_id,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
-    
+
     def get_excluded_content_ids(self, user_id: int) -> set:
         """Get set of content IDs that should be excluded from recommendations"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT DISTINCT content_id FROM user_content_feedback 
+            SELECT DISTINCT content_id FROM user_content_feedback
             WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
         """, (user_id,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return {row[0] for row in rows}
-    
+
     def get_excluded_titles(self, user_id: int) -> set:
         """Get set of titles that should be excluded from recommendations"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT DISTINCT title FROM user_content_feedback 
+            SELECT DISTINCT title FROM user_content_feedback
             WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
         """, (user_id,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
-        # Normalize titles to lowercase for case-insensitive matching
+
         return {row[0].lower() for row in rows if row[0]}
-    
+
     def get_excluded_tmdb_ids(self, user_id: int) -> set:
         """Get set of TMDB IDs that should be excluded from TMDB candidate pool"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT DISTINCT tmdb_id FROM user_content_feedback 
-            WHERE user_id = ? 
-              AND tmdb_id IS NOT NULL 
+            SELECT DISTINCT tmdb_id FROM user_content_feedback
+            WHERE user_id = ?
+              AND tmdb_id IS NOT NULL
               AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
         """, (user_id,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return {row[0] for row in rows if row[0]}
-    
+
     def get_feedback_titles(self, user_id: int, feedback_type: FeedbackType) -> list:
         """Get list of titles for a specific feedback type (for prompt context)"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT title FROM user_content_feedback 
+            SELECT title FROM user_content_feedback
             WHERE user_id = ? AND feedback_type = ?
             ORDER BY created_at DESC
         """, (user_id, feedback_type))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [row[0] for row in rows if row[0]]
-    
+
     def has_feedback(
         self,
         user_id: int,
@@ -248,68 +207,19 @@ class Database:
         """Check if user has already given specific feedback for content"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT 1 FROM user_content_feedback 
+            SELECT 1 FROM user_content_feedback
             WHERE user_id = ? AND content_id = ? AND feedback_type = ?
         """, (user_id, content_id, feedback_type))
-        
+
         result = cursor.fetchone()
         conn.close()
-        
-        return result is not None
-    
-    # ── TMDB Logs ───────────────────────────────────────────────────
-    
-    def log_tmdb_request(self, endpoint: str, params: Optional[dict] = None, duration_ms: Optional[int] = None,
-                         status_code: Optional[int] = None, response_body: Optional[str] = None,
-                         error: Optional[str] = None):
-        """Log a TMDB API request and response"""
-        import json
-        params_str = json.dumps(params) if params else None
-        
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                INSERT INTO tmdb_logs (
-                    endpoint, params, duration_ms, status_code, response_body, error, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                endpoint,
-                params_str,
-                duration_ms,
-                status_code,
-                response_body,
-                error,
-                datetime.now()
-            ))
-            conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to log TMDB request: {e}")
-        finally:
-            conn.close()
 
-    def get_tmdb_logs(self, limit: int = 100) -> List[dict]:
-        """Get recent TMDB logs"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT * FROM tmdb_logs
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (limit,))
-        
-        logs = [dict(row) for row in cursor.fetchall()]
-        conn.close()
-        
-        return logs
-    
+        return result is not None
+
     # ── Media request methods ─────────────────────────────────────────
-    
+
     def add_media_request(
         self,
         telegram_id: int,
@@ -323,16 +233,16 @@ class Database:
         """Record that a user requested a media item via the bot"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             INSERT INTO media_requests (telegram_id, title, media_type, tmdb_id, tvdb_id, chat_id, message_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (telegram_id, title, media_type, tmdb_id, tvdb_id, chat_id, message_id))
-        
+
         conn.commit()
         conn.close()
         logger.info(f"Recorded media request: user={telegram_id}, title='{title}', type={media_type}")
-    
+
     def find_pending_requests(
         self,
         title: str = None,
@@ -343,10 +253,10 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         conditions = ["status = 'pending'"]
         params = []
-        
+
         id_conditions = []
         if tmdb_id:
             id_conditions.append("tmdb_id = ?")
@@ -357,30 +267,30 @@ class Database:
         if title:
             id_conditions.append("LOWER(title) = LOWER(?)")
             params.append(title)
-        
+
         if not id_conditions:
             conn.close()
             return []
-        
+
         conditions.append(f"({' OR '.join(id_conditions)})")
-        
+
         query = f"SELECT * FROM media_requests WHERE {' AND '.join(conditions)}"
         cursor.execute(query, params)
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
-    
+
     def mark_request_notified(self, request_id: int):
         """Mark a media request as notified after sending the download notification"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             UPDATE media_requests SET status = 'notified' WHERE id = ?
         """, (request_id,))
-        
+
         conn.commit()
         conn.close()
         logger.info(f"Marked media request {request_id} as notified")
@@ -390,66 +300,59 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         if user_id:
             cursor.execute("""
-                SELECT * FROM media_requests 
+                SELECT * FROM media_requests
                 WHERE telegram_id = ?
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (user_id, limit))
         else:
             cursor.execute("""
-                SELECT * FROM media_requests 
+                SELECT * FROM media_requests
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (limit,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
-        
+
     def get_recent_feedback(self, limit: int = 50, user_id: Optional[int] = None) -> List[dict]:
         """Get recent user feedback for the admin UI"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         if user_id:
             cursor.execute("""
-                SELECT * FROM user_content_feedback 
+                SELECT * FROM user_content_feedback
                 WHERE user_id = ?
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (user_id, limit))
         else:
             cursor.execute("""
-                SELECT * FROM user_content_feedback 
+                SELECT * FROM user_content_feedback
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (limit,))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]
 
     def get_user_media_library(self, user_id: int, limit: int = 200) -> List[dict]:
-        """Get a unified media library view combining requests and feedback for the admin UI.
-        
-        Returns a merged list where each unique title has its request status,
-        feedback type, and external IDs aggregated into a single row.
-        """
+        """Get a unified media library view combining requests and feedback for the admin UI."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        # SQLite lacks FULL OUTER JOIN, so we use UNION of:
-        # 1) Feedback rows LEFT JOINed with matching requests
-        # 2) Request-only rows (no matching feedback)
+
         cursor.execute("""
-            SELECT 
+            SELECT
                 f.title,
                 f.content_type as media_type,
                 r.status as request_status,
@@ -458,13 +361,13 @@ class Database:
                 COALESCE(f.tvdb_id, r.tvdb_id) as tvdb_id,
                 f.created_at
             FROM user_content_feedback f
-            LEFT JOIN media_requests r 
+            LEFT JOIN media_requests r
                 ON r.telegram_id = ? AND LOWER(f.title) = LOWER(r.title)
             WHERE f.user_id = ?
-            
+
             UNION ALL
-            
-            SELECT 
+
+            SELECT
                 r2.title,
                 r2.media_type,
                 r2.status as request_status,
@@ -475,65 +378,17 @@ class Database:
             FROM media_requests r2
             WHERE r2.telegram_id = ?
               AND NOT EXISTS (
-                  SELECT 1 FROM user_content_feedback f2 
+                  SELECT 1 FROM user_content_feedback f2
                   WHERE f2.user_id = ? AND LOWER(f2.title) = LOWER(r2.title)
               )
-            
+
             ORDER BY created_at DESC
             LIMIT ?
         """, (user_id, user_id, user_id, user_id, limit))
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
-        return [dict(row) for row in rows]
 
-    def log_llm_interaction(
-        self,
-        user_id: int,
-        user_message: str,
-        intent: str,
-        llm_request: str,
-        llm_response: str,
-        duration_ms: int,
-        model: str,
-        tokens: int
-    ):
-        """Log an LLM interaction to the database"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO llm_logs (user_id, user_message, intent, llm_request, llm_response, duration_ms, model, tokens)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, user_message, intent, llm_request, llm_response, duration_ms, model, tokens))
-        
-        conn.commit()
-        conn.close()
-
-    def get_recent_llm_logs(self, limit: int = 50, user_id: Optional[int] = None) -> List[dict]:
-        """Get recent LLM logs for the admin UI"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        if user_id:
-            cursor.execute("""
-                SELECT * FROM llm_logs 
-                WHERE user_id = ?
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (user_id, limit))
-        else:
-            cursor.execute("""
-                SELECT * FROM llm_logs 
-                ORDER BY created_at DESC
-                LIMIT ?
-            """, (limit,))
-        
-        rows = cursor.fetchall()
-        conn.close()
-        
         return [dict(row) for row in rows]
 
     def get_users_summary(self) -> List[dict]:
@@ -541,7 +396,7 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT user_id,
                    (SELECT COUNT(*) FROM media_requests WHERE telegram_id = u.user_id) as requests_count,
@@ -563,8 +418,8 @@ class Database:
             ) u
             ORDER BY last_active DESC
         """)
-        
+
         rows = cursor.fetchall()
         conn.close()
-        
+
         return [dict(row) for row in rows]

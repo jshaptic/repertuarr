@@ -20,8 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Modal elements
     const modal = document.getElementById('llm-modal');
     const modalCloseBtn = document.getElementById('modal-close');
+    const modalTitle = document.getElementById('modal-title');
     const modalBody = document.getElementById('modal-body');
     const modalMeta = document.getElementById('modal-meta');
+    const modalTabs = document.getElementById('modal-tabs');
 
     // Mobile sidebar elements
     const mobileToggle = document.getElementById('mobile-toggle');
@@ -65,6 +67,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Detail sub-tab navigation ───────────────────────────────────
     const detailTabs = document.querySelectorAll('.detail-tab');
     const detailPanes = document.querySelectorAll('.detail-tab-pane');
+    let pendingSessionExpandId = null;
+
+    function switchLogsSubTab(targetId) {
+        const logsPane = document.getElementById('logs');
+        if (!logsPane) return;
+        const siblingTabs = logsPane.querySelectorAll('.detail-tab');
+        const siblingPanes = logsPane.querySelectorAll('.detail-tab-pane');
+        siblingTabs.forEach(t => t.classList.remove('active'));
+        siblingPanes.forEach(p => p.classList.remove('active'));
+        const tab = logsPane.querySelector(`.detail-tab[data-detail-target="${targetId}"]`);
+        const pane = document.getElementById(targetId);
+        if (tab) tab.classList.add('active');
+        if (pane) pane.classList.add('active');
+    }
 
     detailTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -110,17 +126,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchData() {
         try {
-            const [usersRes, llmRes, tmdbRes] = await Promise.all([
+            const [usersRes, llmRes, tmdbRes, sessionsRes] = await Promise.all([
                 fetch('/admin/api/users'),
                 fetch('/admin/api/llm-logs'),
-                fetch('/admin/api/tmdb-logs')
+                fetch('/admin/api/tmdb-logs'),
+                fetch('/admin/api/sessions')
             ]);
 
             const users = await usersRes.json();
             const llmLogs = await llmRes.json();
             const tmdbLogs = await tmdbRes.json();
+            const sessions = await sessionsRes.json();
 
             renderUsers(users);
+            renderSessions(sessions);
             renderGlobalLlmLogs(llmLogs);
             renderTmdbLogs(tmdbLogs);
 
@@ -211,7 +230,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<tr><td colspan="${colspan}" class="empty-state"><div class="empty-state-inner">${icon}<span>${escapeHtml(message)}</span></div></td></tr>`;
     }
 
-    /** Pick a pill color class based on an intent string. */
+    /** Pick a pill color class based on a prompt name. */
+    function promptPillClass(promptName) {
+        const map = {
+            'recommend': 'pill-violet',
+            'inquiry': 'pill-blue',
+            'intent': 'pill-muted'
+        };
+        return map[promptName] || 'pill-muted';
+    }
+
+    /** Pick a pill color class based on a detected intent string. */
     function intentPillClass(intent) {
         const map = {
             'RECOMMEND': 'pill-violet',
@@ -220,6 +249,21 @@ document.addEventListener('DOMContentLoaded', () => {
             'CLASSIFY_INTENT': 'pill-muted'
         };
         return map[intent] || 'pill-muted';
+    }
+
+    /** Short display form of a session UUID. */
+    function shortSessionId(sessionId) {
+        if (!sessionId) return '—';
+        return sessionId.slice(0, 8);
+    }
+
+    /** Resolve prompt name from a log row (new or legacy). */
+    function logPromptName(item) {
+        if (item.prompt_name) return item.prompt_name;
+        if (item.intent === 'CLASSIFY_INTENT') return 'intent';
+        if (item.intent === 'INQUIRY') return 'inquiry';
+        if (item.intent === 'RECOMMEND') return 'recommend';
+        return item.intent || '—';
     }
 
     // ── Render: Users table ─────────────────────────────────────────
@@ -324,7 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Render: User detail — LLM interactions ──────────────────────
     function renderUserLlmLogs(data) {
-        const filteredData = data.filter(item => item.intent !== 'CLASSIFY_INTENT');
+        const filteredData = data.filter(item =>
+            item.prompt_name !== 'intent' && item.intent !== 'CLASSIFY_INTENT'
+        );
         document.getElementById('user-llm-count').textContent = filteredData.length || 0;
         const tbody = document.getElementById('user-llm-tbody');
 
@@ -358,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${chevronHtml}</td>
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
-                <td><span class="pill ${intentPillClass(item.intent)}">${escapeHtml(item.intent || '—')}</span></td>
+                <td><span class="pill ${promptPillClass(logPromptName(item))}">${escapeHtml(logPromptName(item))}</span></td>
             `;
             tbody.appendChild(mainRow);
 
@@ -399,23 +445,202 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Render: Sessions table ─────────────────────────────────────
+    const SESSION_COLSPAN = 8;
+    const chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+
+    function buildSessionTimelineElement(detail) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'session-timeline';
+
+        const entries = [
+            ...detail.llm_logs.map(log => ({ type: 'llm', created_at: log.created_at, data: log })),
+            ...detail.tmdb_logs.map(log => ({ type: 'tmdb', created_at: log.created_at, data: log }))
+        ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        if (entries.length === 0) {
+            wrapper.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No activity recorded for this session</span></div></div>';
+            return wrapper;
+        }
+
+        entries.forEach(entry => {
+            const row = document.createElement('div');
+            row.className = `timeline-entry timeline-${entry.type}`;
+
+            if (entry.type === 'llm') {
+                const log = entry.data;
+                const promptName = logPromptName(log);
+                row.innerHTML = `
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">AI · ${escapeHtml(promptName)}</span>
+                            <span class="timeline-meta">${escapeHtml(log.model || '—')} · ${log.tokens != null ? log.tokens.toLocaleString() : '—'} tok · ${formatDuration(log.duration_ms)}</span>
+                        </div>
+                        <button class="timeline-view-btn" type="button">View details</button>
+                    </div>
+                `;
+                row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openLlmModal(log);
+                });
+            } else {
+                const log = entry.data;
+                const statusClass = log.status_code >= 200 && log.status_code < 300 ? 'pill-emerald' : 'pill-rose';
+                row.innerHTML = `
+                    <div class="timeline-marker"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-header">
+                            <span class="pill pill-blue" style="font-size:0.625rem">TMDB</span>
+                            <span class="timeline-meta">${escapeHtml(log.endpoint || '—')} · <span class="pill ${statusClass}" style="font-size:0.625rem">${log.status_code || 'Error'}</span> · ${formatDuration(log.duration_ms)}</span>
+                        </div>
+                        <button class="timeline-view-btn" type="button">View details</button>
+                    </div>
+                `;
+                row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openTmdbModal(log);
+                });
+            }
+
+            wrapper.appendChild(row);
+        });
+
+        return wrapper;
+    }
+
+    async function loadSessionExpandContent(sessionId, container) {
+        container.innerHTML = '<div class="expanded-inner"><span class="session-loading">Loading calls…</span></div>';
+        try {
+            const res = await fetch(`/admin/api/sessions/${sessionId}`);
+            if (!res.ok) throw new Error('Session not found');
+            const detail = await res.json();
+            const session = detail.session;
+            const statusClass = session.status === 'failed' ? 'pill-rose' : 'pill-emerald';
+
+            const inner = document.createElement('div');
+            inner.className = 'expanded-inner';
+            inner.innerHTML = `
+                <div class="session-expand-meta">
+                    <span><strong>ID:</strong> <code>${escapeHtml(session.id)}</code></span>
+                    <span><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${escapeHtml(session.status || '—')}</span></span>
+                </div>
+                <h4>Calls (${(detail.llm_logs.length + detail.tmdb_logs.length)})</h4>
+            `;
+            inner.appendChild(buildSessionTimelineElement(detail));
+            container.innerHTML = '';
+            container.appendChild(inner);
+            container.dataset.loaded = 'true';
+        } catch (error) {
+            console.error('Error loading session:', error);
+            container.innerHTML = '<div class="expanded-inner"><span class="session-loading">Failed to load session calls</span></div>';
+        }
+    }
+
+    async function toggleSessionRow(mainRow, expandRow, sessionId) {
+        const isOpen = mainRow.classList.contains('expanded');
+        if (isOpen) {
+            mainRow.classList.remove('expanded');
+            expandRow.classList.remove('open');
+            return;
+        }
+
+        mainRow.classList.add('expanded');
+        expandRow.classList.add('open');
+
+        const container = expandRow.querySelector('td');
+        if (container.dataset.loaded !== 'true') {
+            await loadSessionExpandContent(sessionId, container);
+        }
+    }
+
+    async function expandSessionById(sessionId) {
+        const mainRow = document.querySelector(`#sessions-tbody tr[data-session-id="${sessionId}"]`);
+        if (!mainRow) return false;
+        const expandRow = mainRow.nextElementSibling;
+        if (!mainRow.classList.contains('expanded')) {
+            await toggleSessionRow(mainRow, expandRow, sessionId);
+        } else {
+            const container = expandRow.querySelector('td');
+            if (container.dataset.loaded !== 'true') {
+                await loadSessionExpandContent(sessionId, container);
+            }
+        }
+        mainRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return true;
+    }
+
+    function navigateToSession(sessionId) {
+        pendingSessionExpandId = sessionId;
+        switchTab('logs', 'Logs');
+        switchLogsSubTab('logs-sessions');
+        expandSessionById(sessionId).then(found => {
+            if (!found) pendingSessionExpandId = sessionId;
+        });
+    }
+
+    function renderSessions(data) {
+        document.getElementById('sessions-count').textContent = data.length || 0;
+        const tbody = document.getElementById('sessions-tbody');
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = emptyRow(SESSION_COLSPAN, 'No sessions yet');
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.forEach(item => {
+            const mainRow = document.createElement('tr');
+            mainRow.className = 'expandable-row';
+            mainRow.dataset.sessionId = item.id;
+            mainRow.innerHTML = `
+                <td><span class="expand-chevron">${chevronSvg}</span></td>
+                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
+                <td style="color:var(--text-primary);font-weight:500">${item.user_id || '—'}</td>
+                <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
+                <td><span class="pill ${intentPillClass(item.detected_intent)}">${escapeHtml(item.detected_intent || '—')}</span></td>
+                <td style="font-size:0.75rem;font-weight:600">${item.llm_count ?? 0}</td>
+                <td style="font-size:0.75rem;font-weight:600">${item.tmdb_count ?? 0}</td>
+                <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
+            `;
+
+            const expandRow = document.createElement('tr');
+            expandRow.className = 'expanded-content';
+            const expandCell = document.createElement('td');
+            expandCell.colSpan = SESSION_COLSPAN;
+            expandRow.appendChild(expandCell);
+
+            mainRow.addEventListener('click', () => toggleSessionRow(mainRow, expandRow, item.id));
+            tbody.appendChild(mainRow);
+            tbody.appendChild(expandRow);
+        });
+
+        if (pendingSessionExpandId) {
+            const id = pendingSessionExpandId;
+            pendingSessionExpandId = null;
+            expandSessionById(id);
+        }
+    }
+
     // ── Render: Global AI Activity table ────────────────────────────
     function renderGlobalLlmLogs(data) {
         document.getElementById('llm-count').textContent = data.length || 0;
         const tbody = document.getElementById('llm-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(7, 'No AI activity yet');
+            tbody.innerHTML = emptyRow(8, 'No AI activity yet');
             return;
         }
 
         tbody.innerHTML = '';
         data.forEach(item => {
+            const promptName = logPromptName(item);
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="color:var(--text-primary);font-weight:500">${item.user_id || '—'}</td>
-                <td><span class="pill ${intentPillClass(item.intent)}">${escapeHtml(item.intent || '—')}</span></td>
+                <td><span class="pill ${promptPillClass(promptName)}">${escapeHtml(promptName)}</span></td>
+                <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
                 <td style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(item.model || '—')}</td>
                 <td style="font-size:0.75rem;font-weight:600">${item.tokens != null ? item.tokens.toLocaleString() : '—'}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
@@ -425,7 +650,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     </button>
                 </td>
             `;
-            tr.addEventListener('click', () => openLlmModal(item));
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('.session-link')) return;
+                openLlmModal(item);
+            });
+            const sessionCell = tr.children[3];
+            if (item.session_id) {
+                sessionCell.classList.add('session-link');
+                sessionCell.style.cursor = 'pointer';
+                sessionCell.style.color = 'var(--accent-blue)';
+                sessionCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    navigateToSession(item.session_id);
+                });
+            }
             tbody.appendChild(tr);
         });
     }
@@ -436,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('tmdb-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(5, 'No TMDB activity yet');
+            tbody.innerHTML = emptyRow(6, 'No TMDB activity yet');
             return;
         }
 
@@ -450,6 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.innerHTML = `
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="color:var(--text-primary);font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.endpoint)}">${escapeHtml(item.endpoint || '—')}</td>
+                <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
                 <td><span class="pill ${statusClass}">${item.status_code || 'Error'}</span></td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
                 <td>
@@ -459,6 +698,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             `;
             tr.addEventListener('click', () => openTmdbModal(item));
+            const sessionCell = tr.children[2];
+            if (item.session_id) {
+                sessionCell.style.cursor = 'pointer';
+                sessionCell.style.color = 'var(--accent-blue)';
+                sessionCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    navigateToSession(item.session_id);
+                });
+            }
             tbody.appendChild(tr);
         });
     }
@@ -474,63 +722,99 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    modalTabs.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            modalTabs.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const target = tab.getAttribute('data-modal-tab');
+            modalBody.querySelectorAll('.modal-pane').forEach(p => {
+                p.classList.toggle('active', p.getAttribute('data-pane') === target);
+            });
+        });
+    });
+
+    function setModalTabVisibility(show) {
+        modalTabs.style.display = show ? 'flex' : 'none';
+        modalTabs.querySelectorAll('.modal-tab').forEach((t, i) => t.classList.toggle('active', i === 0));
+    }
+
     /**
      * Open the LLM conversation modal for a given log item.
-     *
-     * Renders:
-     *  1. A metadata bar (model, tokens, duration, intent)
-     *  2. All messages from `llm_request` (system/user prompts sent to the LLM)
-     *  3. The assistant's response from `llm_response` — this was the missing piece!
      */
     function openLlmModal(logItem) {
-        // ── Render metadata bar ──
+        const promptName = logPromptName(logItem);
+        modalTitle.textContent = 'AI Activity';
+        setModalTabVisibility(true);
+
         modalMeta.innerHTML = `
-            <div class="meta-item"><strong>Intent:</strong> <span class="pill ${intentPillClass(logItem.intent)}" style="font-size:0.625rem">${escapeHtml(logItem.intent || '—')}</span></div>
+            <div class="meta-item"><strong>Prompt:</strong> <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">${escapeHtml(promptName)}</span></div>
             <div class="meta-item"><strong>Model:</strong> ${escapeHtml(logItem.model || '—')}</div>
             <div class="meta-item"><strong>Tokens:</strong> ${logItem.tokens != null ? logItem.tokens.toLocaleString() : '—'}</div>
             <div class="meta-item"><strong>Duration:</strong> ${formatDuration(logItem.duration_ms)}</div>
         `;
 
-        // ── Render conversation messages ──
         modalBody.innerHTML = '';
-        let messages = [];
 
+        const processedPane = document.createElement('div');
+        processedPane.className = 'modal-pane active';
+        processedPane.setAttribute('data-pane', 'processed');
+
+        let messages = [];
         if (logItem.llm_request) {
             try {
                 const parsed = JSON.parse(logItem.llm_request);
                 if (Array.isArray(parsed)) {
                     messages = parsed;
                 } else {
-                    // Single string prompt (e.g. RECOMMEND uses a rendered template)
                     messages = [{ role: 'user', content: logItem.llm_request }];
                 }
             } catch (e) {
-                // Not JSON — treat as a raw prompt string
                 messages = [{ role: 'user', content: logItem.llm_request }];
             }
         }
 
         if (messages.length === 0 && !logItem.llm_response) {
-            modalBody.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No messages logged for this interaction</span></div></div>';
-            modal.classList.add('open');
-            return;
+            processedPane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No messages logged for this interaction</span></div></div>';
+        } else {
+            messages.forEach(msg => {
+                processedPane.appendChild(createChatBubble(msg.role || 'unknown', msg.content || ''));
+            });
+            if (logItem.llm_response) {
+                processedPane.appendChild(createChatBubble('assistant', logItem.llm_response));
+            }
         }
 
-        // Render each input message (system prompt, user message, etc.)
-        messages.forEach(msg => {
-            modalBody.appendChild(createChatBubble(msg.role || 'unknown', msg.content || ''));
-        });
+        const rawPane = document.createElement('div');
+        rawPane.className = 'modal-pane';
+        rawPane.setAttribute('data-pane', 'raw');
 
-        // Show the raw response as-is (no formatting/pretty-printing)
-        if (logItem.llm_response) {
-            modalBody.appendChild(createChatBubble('assistant', logItem.llm_response));
+        if (logItem.raw_request || logItem.raw_response) {
+            if (logItem.raw_request) {
+                rawPane.appendChild(createChatBubble('request', formatJsonBlock(logItem.raw_request)));
+            }
+            if (logItem.raw_response) {
+                rawPane.appendChild(createChatBubble('response', formatJsonBlock(logItem.raw_response)));
+            }
+        } else {
+            rawPane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No raw API data recorded (legacy log entry)</span></div></div>';
         }
 
+        modalBody.appendChild(processedPane);
+        modalBody.appendChild(rawPane);
         modal.classList.add('open');
     }
 
+    function formatJsonBlock(text) {
+        try {
+            return JSON.stringify(JSON.parse(text), null, 2);
+        } catch (e) {
+            return text;
+        }
+    }
+
     function openTmdbModal(item) {
-        // Render metadata bar
+        modalTitle.textContent = 'TMDB Request';
+        setModalTabVisibility(false);
         const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
         modalMeta.innerHTML = `
             <div class="meta-item"><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${item.status_code || 'Error'}</span></div>

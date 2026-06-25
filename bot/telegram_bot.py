@@ -13,6 +13,7 @@ import requests
 import json
 import time
 import re
+import uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandler, filters, CallbackQueryHandler
 from openai import OpenAI
@@ -22,6 +23,8 @@ from bot.models import IntentResponse, RecommendationResponse, InquiryResponse
 from bot.database import Database
 from bot.translations import get_text
 from bot.jellyfin import JellyfinClient
+from bot.session_context import set_session_id, reset_session_id
+from bot.llm_logging import log_llm_call
 logger = logging.getLogger(__name__)
 
 def load_prompt(prompt_config: dict, **kwargs):
@@ -165,6 +168,15 @@ def register_handlers(app: Application, config: dict, auth_func):
         user_text = update.message.text
         logger.info(f"Received message: {user_text}")
 
+        session_id = str(uuid.uuid4())
+        session_start = time.time()
+        detected_intent = None
+        session_status = 'completed'
+
+        db.create_session(session_id, update.effective_user.id, user_text)
+        context.user_data['session_id'] = session_id
+        ctx_token = set_session_id(session_id)
+
         # Add user message to history
         add_to_history(context, "user", user_text)
 
@@ -196,22 +208,19 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             result = response.choices[0].message.parsed
             logger.info(f"LLM Result Parsed: {result}")
-            
-            tokens = response.usage.total_tokens if getattr(response, 'usage', None) else 0
-            try:
-                db.log_llm_interaction(
-                    user_id=update.effective_user.id,
-                    user_message=user_text,
-                    intent="CLASSIFY_INTENT",
-                    llm_request=json.dumps(messages, ensure_ascii=False),
-                    llm_response=json.dumps(result.dict(), ensure_ascii=False) if hasattr(result, 'dict') else str(result),
-                    duration_ms=duration_ms,
-                    model=response.model,
-                    tokens=tokens
-                )
-            except Exception as log_e:
-                logger.error(f"Failed to log LLM interaction: {log_e}")
+            detected_intent = result.intent
 
+            log_llm_call(
+                db,
+                session_id=session_id,
+                user_id=update.effective_user.id,
+                user_message=user_text,
+                prompt_name='intent',
+                kwargs=kwargs,
+                response=response,
+                parsed=result,
+                duration_ms=duration_ms,
+            )
 
             if result.intent == 'RECOMMEND':
                 await handle_recommend_request(update, context, result)
@@ -228,10 +237,16 @@ def register_handlers(app: Application, config: dict, auth_func):
                 add_to_history(context, "assistant", resp_text)
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            session_status = 'failed'
             logger.error(f"Error processing message: {e}")
             await update.message.reply_text("❌ Something went wrong processing your request.")
             add_to_history(context, "assistant", "❌ Something went wrong processing your request.")
+        finally:
+            reset_session_id(ctx_token)
+            if context.user_data.get('session_status') == 'failed':
+                session_status = 'failed'
+            session_duration_ms = int((time.time() - session_start) * 1000)
+            db.complete_session(session_id, detected_intent, session_status, session_duration_ms)
 
     async def handle_inquiry_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
         user_text = update.message.text
@@ -269,22 +284,19 @@ def register_handlers(app: Application, config: dict, auth_func):
             duration_ms = int((time.time() - start_time) * 1000)
             
             parsed = response.output_parsed
-            
-            tokens = response.usage.total_tokens if getattr(response, 'usage', None) else 0
-            try:
-                db.log_llm_interaction(
-                    user_id=update.effective_user.id,
-                    user_message=user_text,
-                    intent="INQUIRY",
-                    llm_request=json.dumps(messages, ensure_ascii=False),
-                    llm_response=json.dumps(parsed.dict(), ensure_ascii=False) if hasattr(parsed, 'dict') else str(parsed),
-                    duration_ms=duration_ms,
-                    model=response.model,
-                    tokens=tokens
-                )
-            except Exception as log_e:
-                logger.error(f"Failed to log LLM interaction: {log_e}")
-                
+
+            log_llm_call(
+                db,
+                session_id=context.user_data['session_id'],
+                user_id=update.effective_user.id,
+                user_message=user_text,
+                prompt_name='inquiry',
+                kwargs=kwargs,
+                response=response,
+                parsed=parsed,
+                duration_ms=duration_ms,
+            )
+
             reply_text = parsed.reply_text
             
             await update.message.reply_text(reply_text)
@@ -298,6 +310,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                 add_to_history(context, "assistant", "Shared inquiry results carousel")
             
         except Exception as e:
+            context.user_data['session_status'] = 'failed'
             logger.error(f"Inquiry error: {e}")
             await update.message.reply_text("❌ Error generating response.")
             add_to_history(context, "assistant", "❌ Error generating response.")
@@ -373,22 +386,19 @@ def register_handlers(app: Application, config: dict, auth_func):
              duration_ms = int((time.time() - start_time) * 1000)
              parsed_response = response.output_parsed
              logger.info(f"LLM Response Parsed (Recommend): {parsed_response}")
-             
-             tokens = response.usage.total_tokens if getattr(response, 'usage', None) else 0
-             try:
-                 db.log_llm_interaction(
-                    user_id=update.effective_user.id,
-                    user_message=query,
-                    intent="RECOMMEND",
-                    llm_request=prompt,
-                    llm_response=json.dumps(parsed_response.dict(), ensure_ascii=False) if hasattr(parsed_response, 'dict') else str(parsed_response),
-                    duration_ms=duration_ms,
-                    model=response.model,
-                    tokens=tokens
-                 )
-             except Exception as log_e:
-                 logger.error(f"Failed to log LLM interaction: {log_e}")
-             
+
+             log_llm_call(
+                 db,
+                 session_id=context.user_data['session_id'],
+                 user_id=update.effective_user.id,
+                 user_message=query,
+                 prompt_name='recommend',
+                 kwargs=kwargs,
+                 response=response,
+                 parsed=parsed_response,
+                 duration_ms=duration_ms,
+             )
+
              if not parsed_response or not parsed_response.items:
                  await update.message.reply_text("❌ Couldn't generate recommendations.")
                  add_to_history(context, "assistant", "❌ Couldn't generate recommendations.")
@@ -423,6 +433,7 @@ def register_handlers(app: Application, config: dict, auth_func):
              add_to_history(context, "assistant", f"Shared recommendations carousel for '{query}'")
 
         except Exception as e:
+             context.user_data['session_status'] = 'failed'
              logger.error(f"Recommendation error: {e}")
              await update.message.reply_text("❌ Error generating recommendations.")
              add_to_history(context, "assistant", "❌ Error generating recommendations.")

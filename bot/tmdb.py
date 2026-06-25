@@ -5,6 +5,8 @@ import hashlib
 import time
 from typing import Dict, List, Optional, Any
 
+from bot.session_context import get_session_id
+
 logger = logging.getLogger(__name__)
 
 class TmdbClient:
@@ -49,7 +51,8 @@ class TmdbClient:
                     duration_ms=duration_ms,
                     status_code=status_code,
                     response_body=response_body,
-                    error=error_msg
+                    error=error_msg,
+                    session_id=get_session_id(),
                 )
         
     def initialize(self):

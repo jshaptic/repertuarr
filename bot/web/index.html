@@ -229,7 +229,12 @@
                 <div id="logs" class="tab-pane">
                     <!-- Sub-tab bar -->
                     <div class="detail-tabs">
-                        <button class="detail-tab logs-tab active" data-detail-target="logs-ai-activity">
+                        <button class="detail-tab logs-tab active" data-detail-target="logs-sessions">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                            Sessions
+                            <span class="badge" id="sessions-count">0</span>
+                        </button>
+                        <button class="detail-tab logs-tab" data-detail-target="logs-ai-activity">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             AI Activity
                             <span class="badge" id="llm-count">0</span>
@@ -241,8 +246,33 @@
                         </button>
                     </div>
 
+                    <!-- Sessions Sub-tab -->
+                    <div id="logs-sessions" class="detail-tab-pane logs-pane active">
+                        <section class="card glass-effect">
+                            <div class="table-container">
+                                <table class="data-table clickable-rows" id="sessions-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:20px"></th>
+                                            <th>Date</th>
+                                            <th>User</th>
+                                            <th>Message</th>
+                                            <th>Intent</th>
+                                            <th>AI</th>
+                                            <th>TMDB</th>
+                                            <th>Duration</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sessions-tbody">
+                                        <tr><td colspan="8" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Loading sessions…</span></div></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+
                     <!-- AI Activity Sub-tab -->
-                    <div id="logs-ai-activity" class="detail-tab-pane logs-pane active">
+                    <div id="logs-ai-activity" class="detail-tab-pane logs-pane">
                         <section class="card glass-effect">
                             <div class="table-container">
                                 <table class="data-table clickable-rows" id="llm-table">
@@ -250,7 +280,8 @@
                                         <tr>
                                             <th>Date</th>
                                             <th>User</th>
-                                            <th>Intent</th>
+                                            <th>Prompt</th>
+                                            <th>Session</th>
                                             <th>Model</th>
                                             <th>Tokens</th>
                                             <th>Duration</th>
@@ -258,7 +289,7 @@
                                         </tr>
                                     </thead>
                                     <tbody id="llm-tbody">
-                                        <tr><td colspan="7" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
+                                        <tr><td colspan="8" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -274,13 +305,14 @@
                                         <tr>
                                             <th>Date</th>
                                             <th>Endpoint</th>
+                                            <th>Session</th>
                                             <th>Status</th>
                                             <th>Duration</th>
                                             <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="tmdb-tbody">
-                                        <tr><td colspan="5" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Loading TMDB logs…</span></div></td></tr>
+                                        <tr><td colspan="6" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>Loading TMDB logs…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -295,11 +327,15 @@
     <div id="llm-modal" class="modal-overlay">
         <div class="modal-content glass-effect">
             <div class="modal-header">
-                <h2>Conversation</h2>
+                <h2 id="modal-title">Conversation</h2>
                 <button class="modal-close" id="modal-close" aria-label="Close modal">&times;</button>
             </div>
             <div class="modal-meta" id="modal-meta">
                 <!-- Metadata bar rendered by JS -->
+            </div>
+            <div class="modal-tabs" id="modal-tabs" style="display:none">
+                <button class="modal-tab active" data-modal-tab="processed">Processed</button>
+                <button class="modal-tab" data-modal-tab="raw">Raw</button>
             </div>
             <div class="modal-body" id="modal-body">
                 <!-- Chat bubbles rendered by JS -->
@@ -310,6 +346,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=12"></script>
+    <script type="module" src="/admin/static/app.js?v=14"></script>
 </body>
 </html>

@@ -50,6 +50,28 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
         except Exception as e:
             logger.error(f"Error fetching TMDB logs: {e}")
             return web.json_response({"error": str(e)}, status=500)
+
+    async def api_sessions(request):
+        try:
+            limit = int(request.query.get('limit', 50))
+            user_id_str = request.query.get('user_id')
+            user_id = int(user_id_str) if user_id_str else None
+            rows = db.get_recent_sessions(limit=limit, user_id=user_id)
+            return web.json_response(rows)
+        except Exception as e:
+            logger.error(f"Error fetching sessions: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def api_session_detail(request):
+        try:
+            session_id = request.match_info['session_id']
+            detail = db.get_session_detail(session_id)
+            if not detail:
+                return web.json_response({"error": "Session not found"}, status=404)
+            return web.json_response(detail)
+        except Exception as e:
+            logger.error(f"Error fetching session detail: {e}")
+            return web.json_response({"error": str(e)}, status=500)
             
     async def api_users(request):
         try:
@@ -105,6 +127,8 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
     app.router.add_get('/admin/api/feedback', api_feedback)
     app.router.add_get('/admin/api/llm-logs', api_llm_logs)
     app.router.add_get('/admin/api/tmdb-logs', api_tmdb_logs)
+    app.router.add_get('/admin/api/sessions', api_sessions)
+    app.router.add_get('/admin/api/sessions/{session_id}', api_session_detail)
     app.router.add_get('/admin/api/users', api_users)
     app.router.add_get('/admin/api/media-library', api_media_library)
     
