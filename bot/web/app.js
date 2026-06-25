@@ -150,6 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('stat-requests').textContent = totalReq;
             document.getElementById('stat-feedback').textContent = totalFb;
             document.getElementById('stat-llm').textContent = llmLogs.length || 0;
+            const totalAiCost = users.reduce((sum, u) => sum + (u.llm_cost_usd || 0), 0);
+            document.getElementById('stat-ai-cost').textContent = formatCost(totalAiCost);
 
             // Update last refreshed timestamp
             lastRefreshedEl.textContent = `Updated ${new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
@@ -224,6 +226,28 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${(ms / 1000).toFixed(1)}s`;
     }
 
+    /** Format USD cost for display; null/undefined shows em dash. */
+    function formatCost(usd) {
+        if (usd == null || usd === '') return '—';
+        if (usd === 0) return '$0.00';
+        if (usd < 0.01) return `$${usd.toFixed(4)}`;
+        return `$${usd.toFixed(2)}`;
+    }
+
+    /** Format token breakdown (input / output / cached) for a log row. */
+    function formatTokenBreakdown(item) {
+        if (item.input_tokens == null && item.output_tokens == null) {
+            return item.tokens != null ? item.tokens.toLocaleString() : '—';
+        }
+        const parts = [];
+        if (item.input_tokens != null) parts.push(`${item.input_tokens.toLocaleString()} in`);
+        if (item.output_tokens != null) parts.push(`${item.output_tokens.toLocaleString()} out`);
+        if (item.cached_input_tokens > 0) {
+            parts.push(`${item.cached_input_tokens.toLocaleString()} cached`);
+        }
+        return parts.join(' · ') || '—';
+    }
+
     /** Build an empty-state table row. */
     function emptyRow(colspan, message, iconSvg) {
         const icon = iconSvg || '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
@@ -272,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('users-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(6, 'No users found');
+            tbody.innerHTML = emptyRow(7, 'No users found');
             return;
         }
 
@@ -296,6 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${item.requests_count || 0}</td>
                 <td>${item.feedback_count || 0}</td>
                 <td>${item.llm_count || 0}</td>
+                <td style="font-size:0.75rem;font-weight:600">${formatCost(item.llm_cost_usd)}</td>
                 <td title="${escapeHtml(fullDate(item.last_active))}">${timeAgo(item.last_active)}</td>
             `;
             tr.addEventListener('click', () => showUserDetails(item.user_id, item.name));
@@ -375,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('user-llm-tbody');
 
         if (!filteredData || filteredData.length === 0) {
-            tbody.innerHTML = emptyRow(4, 'No conversations yet');
+            tbody.innerHTML = emptyRow(5, 'No conversations yet');
             return;
         }
 
@@ -405,6 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
                 <td><span class="pill ${promptPillClass(logPromptName(item))}">${escapeHtml(logPromptName(item))}</span></td>
+                <td style="font-size:0.75rem;font-weight:600">${formatCost(item.cost_usd)}</td>
             `;
             tbody.appendChild(mainRow);
 
@@ -413,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const expandRow = document.createElement('tr');
                 expandRow.className = 'expanded-content';
                 const expandCell = document.createElement('td');
-                expandCell.colSpan = 4;
+                expandCell.colSpan = 5;
 
                 let tableRows = mediaItems.map(media => `
                     <tr>
@@ -446,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Render: Sessions table ─────────────────────────────────────
-    const SESSION_COLSPAN = 8;
+    const SESSION_COLSPAN = 9;
     const chevronSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
 
     function buildSessionTimelineElement(detail) {
@@ -475,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="timeline-content">
                         <div class="timeline-header">
                             <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">AI · ${escapeHtml(promptName)}</span>
-                            <span class="timeline-meta">${escapeHtml(log.model || '—')} · ${log.tokens != null ? log.tokens.toLocaleString() : '—'} tok · ${formatDuration(log.duration_ms)}</span>
+                            <span class="timeline-meta">${escapeHtml(log.model || '—')} · ${formatTokenBreakdown(log)} · ${formatCost(log.cost_usd)} · ${formatDuration(log.duration_ms)}</span>
                         </div>
                         <button class="timeline-view-btn" type="button">View details</button>
                     </div>
@@ -602,6 +628,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="font-size:0.75rem;font-weight:600">${item.llm_count ?? 0}</td>
                 <td style="font-size:0.75rem;font-weight:600">${item.tmdb_count ?? 0}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
+                <td style="font-size:0.75rem;font-weight:600">${formatCost(item.llm_cost_usd)}</td>
             `;
 
             const expandRow = document.createElement('tr');
@@ -628,7 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('llm-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(8, 'No AI activity yet');
+            tbody.innerHTML = emptyRow(9, 'No AI activity yet');
             return;
         }
 
@@ -642,7 +669,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="pill ${promptPillClass(promptName)}">${escapeHtml(promptName)}</span></td>
                 <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
                 <td style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(item.model || '—')}</td>
-                <td style="font-size:0.75rem;font-weight:600">${item.tokens != null ? item.tokens.toLocaleString() : '—'}</td>
+                <td style="font-size:0.75rem;font-weight:600">${formatTokenBreakdown(item)}</td>
+                <td style="font-size:0.75rem;font-weight:600">${formatCost(item.cost_usd)}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
                 <td>
                     <button class="btn-view" title="View conversation">
@@ -749,7 +777,8 @@ document.addEventListener('DOMContentLoaded', () => {
         modalMeta.innerHTML = `
             <div class="meta-item"><strong>Prompt:</strong> <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">${escapeHtml(promptName)}</span></div>
             <div class="meta-item"><strong>Model:</strong> ${escapeHtml(logItem.model || '—')}</div>
-            <div class="meta-item"><strong>Tokens:</strong> ${logItem.tokens != null ? logItem.tokens.toLocaleString() : '—'}</div>
+            <div class="meta-item"><strong>Tokens:</strong> ${formatTokenBreakdown(logItem)}</div>
+            <div class="meta-item"><strong>Cost:</strong> ${formatCost(logItem.cost_usd)}</div>
             <div class="meta-item"><strong>Duration:</strong> ${formatDuration(logItem.duration_ms)}</div>
         `;
 

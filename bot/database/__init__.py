@@ -402,6 +402,7 @@ class Database(LogMixin):
                    (SELECT COUNT(*) FROM media_requests WHERE telegram_id = u.user_id) as requests_count,
                    (SELECT COUNT(*) FROM user_content_feedback WHERE user_id = u.user_id) as feedback_count,
                    (SELECT COUNT(*) FROM llm_logs WHERE user_id = u.user_id) as llm_count,
+                   (SELECT COALESCE(SUM(cost_usd), 0) FROM llm_logs WHERE user_id = u.user_id) as llm_cost_usd,
                    (SELECT MAX(created_at) FROM (
                        SELECT created_at FROM media_requests WHERE telegram_id = u.user_id
                        UNION ALL

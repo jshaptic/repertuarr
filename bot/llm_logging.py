@@ -9,6 +9,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from bot.llm_pricing import calculate_cost, extract_token_usage
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,11 +77,13 @@ def log_llm_call(
     response: Any,
     parsed: Any,
     duration_ms: int,
+    pricing: Optional[dict] = None,
+    llm_name: Optional[str] = None,
 ) -> None:
     """Log an LLM call with processed and raw request/response data."""
-    tokens = 0
-    if getattr(response, 'usage', None):
-        tokens = response.usage.total_tokens or 0
+    usage = extract_token_usage(response)
+    tokens = usage.total_tokens
+    cost_usd = calculate_cost(usage, pricing)
 
     model = getattr(response, 'model', None) or kwargs.get('model', '')
 
@@ -96,6 +100,11 @@ def log_llm_call(
             duration_ms=duration_ms,
             model=model,
             tokens=tokens,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            cost_usd=cost_usd,
+            llm_name=llm_name,
         )
     except Exception as log_e:
         logger.error(f"Failed to log LLM interaction: {log_e}")

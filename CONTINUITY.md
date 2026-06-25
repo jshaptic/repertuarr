@@ -2,12 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-25
-**Goal:** Refactor admin Logs to group activity by bot sessions with raw LLM API payloads.
-**Now:** Sessions refactor complete — DB schema, bot instrumentation, admin API + UI.
-**Next:** Manual verification with live bot traffic.
+**Goal:** LLM cost tracking — per-LLM pricing in config, cost per AI request in Logs, aggregated per user.
+**Now:** Implementation complete — pricing module, DB columns, logging pipeline, admin UI cost columns.
+**Next:** Add `pricing` blocks to local `config.yaml` and verify with live bot traffic.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-25 LLM cost tracking: `bot/llm_pricing.py`, pricing in `llms[].pricing`, token breakdown + `cost_usd` on `llm_logs`, cost in Logs (Sessions/AI Activity/modal) and Users aggregate.
 - `[CODE]` 2026-06-25 Admin Logs sessions refactor: `sessions` table, session_id on llm/tmdb logs, prompt_name + raw_request/raw_response on LLM logs, Sessions tab in admin UI, Processed/Raw modal tabs.
 - `[CODE]` 2026-06-25 Added `tmdb_id` to `RecommendationItem` in `models.py` and to the `recommendation.mustache` prompt template.
 - `[CODE]` 2026-06-24 Renamed "AI Activity" to "Logs" in Admin UI and added a new sub-section to view TMDB requests/responses. Logs are now saved to `tmdb_logs` in `bot/database.py`.
@@ -22,12 +23,11 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/database/logs.py`
-- `bot/session_context.py`
+- `bot/llm_pricing.py`
 - `bot/llm_logging.py`
+- `bot/database/logs.py`
 - `bot/web/index.html`
 - `bot/web/app.js`
-- `bot/web/styles.css`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.
@@ -39,3 +39,4 @@
 - `D008 ACTIVE:` User Details page uses tabbed sub-navigation instead of stacked tables; Conversations tab has expandable rows with nested suggested media sub-tables.
 - `D009 ACTIVE:` Integrate TMDB Discover APIs to fetch pre-filtered candidate pool of media based on user's `discovery_filter`, then pass to LLM as candidates.
 - `D010 ACTIVE:` Bot interaction sessions (UUID per user message) group LLM + TMDB logs; prompt_name uses agent config keys (`intent`, `inquiry`, `recommend`); raw API payloads stored alongside processed logs.
+- `D011 ACTIVE:` Per-LLM `pricing` in config (`input_per_million`, `output_per_million`, `cached_input_per_million` USD); cost computed at log time; missing pricing logs request with `cost_usd` NULL (UI shows em dash).

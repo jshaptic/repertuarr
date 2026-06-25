@@ -81,6 +81,11 @@ class LogMixin:
             "ALTER TABLE llm_logs ADD COLUMN prompt_name TEXT",
             "ALTER TABLE llm_logs ADD COLUMN raw_request TEXT",
             "ALTER TABLE llm_logs ADD COLUMN raw_response TEXT",
+            "ALTER TABLE llm_logs ADD COLUMN input_tokens INTEGER",
+            "ALTER TABLE llm_logs ADD COLUMN output_tokens INTEGER",
+            "ALTER TABLE llm_logs ADD COLUMN cached_input_tokens INTEGER",
+            "ALTER TABLE llm_logs ADD COLUMN cost_usd REAL",
+            "ALTER TABLE llm_logs ADD COLUMN llm_name TEXT",
             "ALTER TABLE tmdb_logs ADD COLUMN session_id TEXT",
         ):
             try:
@@ -140,7 +145,8 @@ class LogMixin:
             cursor.execute("""
                 SELECT s.*,
                        (SELECT COUNT(*) FROM llm_logs WHERE session_id = s.id) AS llm_count,
-                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count
+                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count,
+                       (SELECT COALESCE(SUM(cost_usd), 0) FROM llm_logs WHERE session_id = s.id) AS llm_cost_usd
                 FROM sessions s
                 WHERE s.user_id = ?
                 ORDER BY s.created_at DESC
@@ -150,7 +156,8 @@ class LogMixin:
             cursor.execute("""
                 SELECT s.*,
                        (SELECT COUNT(*) FROM llm_logs WHERE session_id = s.id) AS llm_count,
-                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count
+                       (SELECT COUNT(*) FROM tmdb_logs WHERE session_id = s.id) AS tmdb_count,
+                       (SELECT COALESCE(SUM(cost_usd), 0) FROM llm_logs WHERE session_id = s.id) AS llm_cost_usd
                 FROM sessions s
                 ORDER BY s.created_at DESC
                 LIMIT ?
@@ -205,6 +212,11 @@ class LogMixin:
         raw_request: Optional[str] = None,
         raw_response: Optional[str] = None,
         intent: Optional[str] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+        cached_input_tokens: Optional[int] = None,
+        cost_usd: Optional[float] = None,
+        llm_name: Optional[str] = None,
     ) -> None:
         """Log an LLM interaction to the database."""
         conn = sqlite3.connect(self.db_path)
@@ -213,8 +225,9 @@ class LogMixin:
             INSERT INTO llm_logs (
                 user_id, user_message, intent, llm_request, llm_response,
                 duration_ms, model, tokens, session_id, prompt_name,
-                raw_request, raw_response, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                raw_request, raw_response, input_tokens, output_tokens,
+                cached_input_tokens, cost_usd, llm_name, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             user_message,
@@ -228,6 +241,11 @@ class LogMixin:
             prompt_name,
             raw_request,
             raw_response,
+            input_tokens,
+            output_tokens,
+            cached_input_tokens,
+            cost_usd,
+            llm_name,
             datetime.now(),
         ))
         conn.commit()

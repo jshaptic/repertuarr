@@ -126,6 +126,15 @@
                                 <span id="stat-llm" class="stat-value">0</span>
                             </div>
                         </div>
+                        <div class="stat-card glass-effect" data-accent="rose">
+                            <div class="stat-icon">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-label">Total AI Cost</span>
+                                <span id="stat-ai-cost" class="stat-value">—</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -145,11 +154,12 @@
                                         <th>Requests</th>
                                         <th>Feedback</th>
                                         <th>AI Uses</th>
+                                        <th>AI Cost</th>
                                         <th>Last Active</th>
                                     </tr>
                                 </thead>
                                 <tbody id="users-tbody">
-                                    <tr><td colspan="6" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><span>Loading users…</span></div></td></tr>
+                                    <tr><td colspan="7" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><span>Loading users…</span></div></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -194,6 +204,7 @@
                                             <th>Date</th>
                                             <th>Message</th>
                                             <th>Intent</th>
+                                            <th>Cost</th>
                                         </tr>
                                     </thead>
                                     <tbody id="user-llm-tbody"></tbody>
@@ -261,10 +272,11 @@
                                             <th>AI</th>
                                             <th>TMDB</th>
                                             <th>Duration</th>
+                                            <th>Cost</th>
                                         </tr>
                                     </thead>
                                     <tbody id="sessions-tbody">
-                                        <tr><td colspan="8" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Loading sessions…</span></div></td></tr>
+                                        <tr><td colspan="9" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Loading sessions…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -284,12 +296,13 @@
                                             <th>Session</th>
                                             <th>Model</th>
                                             <th>Tokens</th>
+                                            <th>Cost</th>
                                             <th>Duration</th>
                                             <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="llm-tbody">
-                                        <tr><td colspan="8" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
+                                        <tr><td colspan="9" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -346,6 +359,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=14"></script>
+    <script type="module" src="/admin/static/app.js?v=15"></script>
 </body>
 </html>

@@ -220,6 +220,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 response=response,
                 parsed=result,
                 duration_ms=duration_ms,
+                llm_name=llm_cfg.get('name'),
+                pricing=llm_cfg.get('pricing'),
             )
 
             if result.intent == 'RECOMMEND':
@@ -295,6 +297,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 response=response,
                 parsed=parsed,
                 duration_ms=duration_ms,
+                llm_name=llm_cfg.get('name'),
+                pricing=llm_cfg.get('pricing'),
             )
 
             reply_text = parsed.reply_text
@@ -397,6 +401,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                  response=response,
                  parsed=parsed_response,
                  duration_ms=duration_ms,
+                 llm_name=llm_cfg.get('name'),
+                 pricing=llm_cfg.get('pricing'),
              )
 
              if not parsed_response or not parsed_response.items:
