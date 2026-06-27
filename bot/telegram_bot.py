@@ -25,6 +25,7 @@ from bot.translations import get_text
 from bot.jellyfin import JellyfinClient
 from bot.session_context import set_session_id, reset_session_id
 from bot.llm_logging import log_llm_call
+from bot.recommendation_pool import resolve_recommendation_sources
 logger = logging.getLogger(__name__)
 
 def load_prompt(prompt_config: dict, **kwargs):
@@ -358,9 +359,9 @@ def register_handlers(app: Application, config: dict, auth_func):
              # Ask LLM for list with user context
              tmdb_candidates_data = []
              if tmdb_client:
-                 discovery_filter = user_prefs.get('discovery_filter', {})
+                 recommendation_sources = resolve_recommendation_sources(user_prefs)
                  excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id)
-                 tmdb_candidates_list = tmdb_client.get_candidates(discovery_filter, user_lang, excluded_tmdb_ids)
+                 tmdb_candidates_list = tmdb_client.get_candidates(recommendation_sources, user_lang, excluded_tmdb_ids)
                  if tmdb_candidates_list:
                      tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              

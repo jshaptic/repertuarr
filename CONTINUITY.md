@@ -1,14 +1,14 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-26
-**Goal:** LLM cost tracking — per-LLM pricing in config, cost per AI request in Logs, aggregated per user.
-**Now:** Plain monospace HTTP status (no pills) for TMDB + AI; `status_code` on `llm_logs` (200 on success).
-**Next:** Add `pricing` blocks to local `config.yaml` and verify with live bot traffic.
+**Date:** 2026-06-27
+**Goal:** Configurable recommendation candidate pool — per-user `recommendation_sources` mixing popular, top_rated, and discover with per-source counts and media types.
+**Now:** Discover filters use TMDB API query params directly (`with_genres`, `vote_average.gte`, etc.); no legacy `discovery_filter` or name-to-ID translation.
+**Next:** Verify with live RECOMMEND intent traffic; tune per-user source mixes in config.yaml.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[CODE]` 2026-06-26 HTTP status UI: `.http-status` plain text (no pills) for TMDB; `status_code` on `llm_logs`; Status column in AI Activity + modal + session timeline; `styles.css?v=14`, `app.js?v=22`.
+- `[CODE]` 2026-06-27 TMDB-native discover filters: pass-through query params in `bot/tmdb.py`; removed genre/keyword name resolution and `discovery_filter` migration; config uses TMDB IDs/syntax; tests in `tests/test_tmdb_discover.py`.
 - `[CODE]` 2026-06-26 Raw view: request/response side-by-side (`.modal-raw-columns` grid) for AI Raw tab and TMDB modal; modal widens to 1100px via `.modal-wide`; `styles.css?v=13`, `app.js?v=21`.
 - `[CODE]` 2026-06-26 Sessions expand redesign: compact timeline cards with colored left accent border (removed dot markers); `styles.css?v=11`, `app.js?v=18`.
 - `[CODE]` 2026-06-26 Sessions table: user display names; session ID + status on row (removed from expand meta).
@@ -29,11 +29,12 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/llm_pricing.py`
-- `bot/llm_logging.py`
-- `bot/database/logs.py`
-- `bot/web/index.html`
-- `bot/web/app.js`
+- `bot/recommendation_pool.py`
+- `bot/tmdb.py`
+- `bot/telegram_bot.py`
+- `config.yaml`
+- `tests/test_recommendation_pool.py`
+- `tests/test_tmdb_discover.py`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.
@@ -43,6 +44,6 @@
 - `D006 ACTIVE:` Admin UI branding renamed to "Repertuarr".
 - `D007 ACTIVE:` LLM returns `original_title` alongside localized `title`; Radarr/Sonarr lookups use `original_title`, Telegram display uses localized `title`/`overview`.
 - `D008 ACTIVE:` User Details page uses tabbed sub-navigation instead of stacked tables; Conversations tab has expandable rows with nested suggested media sub-tables.
-- `D009 ACTIVE:` Integrate TMDB Discover APIs to fetch pre-filtered candidate pool of media based on user's `discovery_filter`, then pass to LLM as candidates.
+- `D009 ACTIVE:` Per-user `recommendation_sources` array; discover `filter` uses TMDB API param names/syntax (`.gte`/`.lte`, comma=AND, pipe=OR); genre/keyword IDs required in config.
 - `D010 ACTIVE:` Bot interaction sessions (UUID per user message) group LLM + TMDB logs; prompt_name uses agent config keys (`intent`, `inquiry`, `recommend`); raw API payloads stored alongside processed logs.
 - `D011 ACTIVE:` Per-LLM `pricing` in config (`input_per_million`, `output_per_million`, `cached_input_per_million` USD); cost computed at log time; missing pricing logs request with `cost_usd` NULL (UI shows em dash).
