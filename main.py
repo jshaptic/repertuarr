@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import yaml
-from telegram.ext import ApplicationBuilder, PicklePersistence
+from telegram.ext import ApplicationBuilder
 from bot import telegram_bot
 from bot.webhook import start_webhook_server
 from bot.tmdb import TmdbClient
@@ -27,8 +27,10 @@ async def run_telegram_bot(messenger_conf, bot_config, auth_func):
         logger.warning("Telegram token missing in messenger config, skipping bot startup.")
         return None
 
-    persistence = PicklePersistence(filepath="data/telegram_bot_data.pickle")
-    app = ApplicationBuilder().token(token).persistence(persistence).build()
+    # Persistence is intentionally disabled: chat transcript and carousel state
+    # now live in the SQLite database (bot/database/chat.py), and per-request
+    # state (user_info, session_id) is rebuilt on every update.
+    app = ApplicationBuilder().token(token).build()
     db, jellyfin_client = telegram_bot.register_handlers(app, bot_config, auth_func)
 
     await app.initialize()

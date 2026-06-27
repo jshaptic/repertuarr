@@ -193,6 +193,24 @@ class LogMixin:
             "tmdb_logs": tmdb_logs,
         }
 
+    def get_session_costs(self, session_ids: List[str]) -> dict:
+        """Map session_id -> total LLM cost (USD) for the given sessions."""
+        ids = [s for s in session_ids if s]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT session_id, COALESCE(SUM(cost_usd), 0)
+            FROM llm_logs
+            WHERE session_id IN ({placeholders})
+            GROUP BY session_id
+        """, ids)
+        out = {row[0]: row[1] for row in cursor.fetchall()}
+        conn.close()
+        return out
+
     # ── LLM Logs ────────────────────────────────────────────────────
 
     def log_llm_interaction(

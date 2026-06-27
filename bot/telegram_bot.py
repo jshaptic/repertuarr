@@ -43,16 +43,7 @@ def load_prompt(prompt_config: dict, **kwargs):
     with open(path, 'r') as f:
         return chevron.render(f, kwargs)
 
-def add_to_history(context: ContextTypes.DEFAULT_TYPE, role: str, content: str):
-    """Adds a message to the chat history, keeping only the last 30."""
-    if 'history' not in context.chat_data:
-        context.chat_data['history'] = []
-    
-    context.chat_data['history'].append({"role": role, "content": content})
-    
-    # Trim to last 30
-    if len(context.chat_data['history']) > 30:
-        context.chat_data['history'] = context.chat_data['history'][-30:]
+HISTORY_LIMIT = 30
 
 def register_handlers(app: Application, config: dict, auth_func):
     """Registers commands for the Media (*Arr) bot"""
@@ -93,6 +84,31 @@ def register_handlers(app: Application, config: dict, auth_func):
     
     # Initialize database
     db = Database()
+
+    def add_to_history(update: Update, context: ContextTypes.DEFAULT_TYPE, role: str, content: str, sent_message=None):
+        """Persist a conversational turn to the DB-backed transcript.
+
+        sent_message, when provided, links the row to its Telegram message id
+        (used for user messages so edits can later be synced).
+        """
+        user = update.effective_user
+        chat = update.effective_chat
+        if not user or not chat:
+            return
+        message_id = sent_message.message_id if sent_message is not None else None
+        db.add_chat_message(
+            user_id=user.id,
+            chat_id=chat.id,
+            role=role,
+            text=content,
+            message_id=message_id,
+            session_id=context.user_data.get('session_id'),
+        )
+
+    def get_llm_history(user_id: int) -> list:
+        """Return the recent transcript as OpenAI-style role/content messages."""
+        rows = db.get_chat_messages(user_id, limit=HISTORY_LIMIT)
+        return [{"role": r["role"], "content": r["text"] or ""} for r in rows]
     
     # Wire database to TMDB client for logging
     tmdb_client = config.get('tmdb_client')
@@ -127,8 +143,8 @@ def register_handlers(app: Application, config: dict, auth_func):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
-        await update.message.reply_text("🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!")
-        add_to_history(context, "assistant", "🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!")
+        sent = await update.message.reply_text("🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!")
+        add_to_history(update, context, "assistant", "🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!", sent)
 
     async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
@@ -154,16 +170,16 @@ def register_handlers(app: Application, config: dict, auth_func):
             status_lines.append("ℹ️ Sonarr: Not configured")
 
         response_text = "\n".join(status_lines)
-        await update.message.reply_text(response_text)
-        add_to_history(context, "assistant", response_text)
+        sent = await update.message.reply_text(response_text)
+        add_to_history(update, context, "assistant", response_text, sent)
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
         if not openai_clients:
-            await update.message.reply_text("⚠️ LLM not configured. Cannot process request.")
-            add_to_history(context, "assistant", "⚠️ LLM not configured. Cannot process request.")
+            sent = await update.message.reply_text("⚠️ LLM not configured. Cannot process request.")
+            add_to_history(update, context, "assistant", "⚠️ LLM not configured. Cannot process request.", sent)
             return
 
         user_text = update.message.text
@@ -179,7 +195,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         ctx_token = set_session_id(session_id)
 
         # Add user message to history
-        add_to_history(context, "user", user_text)
+        add_to_history(update, context, "user", user_text, update.message)
 
         try:
             # 1. Classify with LLM
@@ -187,9 +203,8 @@ def register_handlers(app: Application, config: dict, auth_func):
             system_content = load_prompt(agent_prompts.get('intent', {}))
             messages = [{"role": "system", "content": system_content}]
             
-            # Add history (excluding the one we just added? No, include it.)
-            # Wait, we just added it. So history contains it.
-            messages.extend(context.chat_data.get('history', []))
+            # History from DB already includes the user message stored above.
+            messages.extend(get_llm_history(update.effective_user.id))
             
             # Log the request
             logger.info(f"Sending LLM Request (Intent): {json.dumps(messages, ensure_ascii=False)}")
@@ -236,14 +251,14 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             else:
                 resp_text = "🤔 I'm not sure what you want."
-                await update.message.reply_text(resp_text)
-                add_to_history(context, "assistant", resp_text)
+                sent = await update.message.reply_text(resp_text)
+                add_to_history(update, context, "assistant", resp_text, sent)
 
         except Exception as e:
             session_status = 'failed'
             logger.error(f"Error processing message: {e}")
-            await update.message.reply_text("❌ Something went wrong processing your request.")
-            add_to_history(context, "assistant", "❌ Something went wrong processing your request.")
+            sent = await update.message.reply_text("❌ Something went wrong processing your request.")
+            add_to_history(update, context, "assistant", "❌ Something went wrong processing your request.", sent)
         finally:
             reset_session_id(ctx_token)
             if context.user_data.get('session_status') == 'failed':
@@ -267,8 +282,8 @@ def register_handlers(app: Application, config: dict, auth_func):
             system_content = load_prompt(agent_prompts.get('inquiry', {}), language=user_lang)
             messages = [{"role": "system", "content": system_content}]
             
-            # Add history
-            messages.extend(context.chat_data.get('history', []))
+            # Add history from DB
+            messages.extend(get_llm_history(update.effective_user.id))
             
             logger.info(f"Sending LLM Request (Inquiry)")
             
@@ -304,21 +319,18 @@ def register_handlers(app: Application, config: dict, auth_func):
 
             reply_text = parsed.reply_text
             
-            await update.message.reply_text(reply_text)
-            add_to_history(context, "assistant", reply_text)
+            sent = await update.message.reply_text(reply_text)
+            add_to_history(update, context, "assistant", reply_text, sent)
             
             if parsed.items:
-                context.user_data['search_results'] = parsed.items
-                context.user_data['search_index'] = 0
-                context.user_data['search_type'] = 'movie' # Defaulting to movie for mixed lists
-                await send_carousel_card(update, context, is_new=True)
-                add_to_history(context, "assistant", "Shared inquiry results carousel")
+                await start_carousel(update, context, list(parsed.items), 'movie')
+                add_to_history(update, context, "assistant", "Shared inquiry results carousel")
             
         except Exception as e:
             context.user_data['session_status'] = 'failed'
             logger.error(f"Inquiry error: {e}")
-            await update.message.reply_text("❌ Error generating response.")
-            add_to_history(context, "assistant", "❌ Error generating response.")
+            sent = await update.message.reply_text("❌ Error generating response.")
+            add_to_history(update, context, "assistant", "❌ Error generating response.", sent)
 
     async def handle_recommend_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
         query = data.query or 'something good'
@@ -407,8 +419,8 @@ def register_handlers(app: Application, config: dict, auth_func):
              )
 
              if not parsed_response or not parsed_response.items:
-                 await update.message.reply_text("❌ Couldn't generate recommendations.")
-                 add_to_history(context, "assistant", "❌ Couldn't generate recommendations.")
+                 sent = await update.message.reply_text("❌ Couldn't generate recommendations.")
+                 add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
                  return
              
              # Filter out watched/disliked content by title
@@ -422,36 +434,28 @@ def register_handlers(app: Application, config: dict, auth_func):
              logger.info(f"Filtered recommendations: {len(all_items)} -> {len(items)} (excluded {len(excluded_titles)} titles)")
              
              if not items:
-                 await update.message.reply_text("❌ Couldn't generate recommendations.")
-                 add_to_history(context, "assistant", "❌ Couldn't generate recommendations.")
+                 sent = await update.message.reply_text("❌ Couldn't generate recommendations.")
+                 add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
                  return
 
-             # Store in session (without IDs/Images yet)
-             context.user_data['search_results'] = items
-             context.user_data['search_index'] = 0
-             context.user_data['search_type'] = 'movie' # Recommendations default to movie for now
-             
-             # context.user_data['search_type'] = 'movie' # Redundant line removed
-             
              reply_markup = ReplyKeyboardMarkup([['Recommend more']], resize_keyboard=True, one_time_keyboard=False)
-             await update.message.reply_text("Here are your recommendations:", reply_markup=reply_markup)
              
-             await send_carousel_card(update, context, is_new=True)
-             add_to_history(context, "assistant", f"Shared recommendations carousel for '{query}'")
+             await start_carousel(update, context, list(items), 'movie')
+             add_to_history(update, context, "assistant", f"Shared recommendations carousel for '{query}'")
 
         except Exception as e:
              context.user_data['session_status'] = 'failed'
              logger.error(f"Recommendation error: {e}")
-             await update.message.reply_text("❌ Error generating recommendations.")
-             add_to_history(context, "assistant", "❌ Error generating recommendations.")
+             sent = await update.message.reply_text("❌ Error generating recommendations.")
+             add_to_history(update, context, "assistant", "❌ Error generating recommendations.", sent)
 
     async def handle_add_media_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
         title = data.title
         media_type = data.media_type # Default to movie
         
         if not title:
-            await update.message.reply_text("❓ I understood you want to add media, but I couldn't figure out the title.")
-            add_to_history(context, "assistant", "❓ I understood you want to add media, but I couldn't figure out the title.")
+            sent = await update.message.reply_text("❓ I understood you want to add media, but I couldn't figure out the title.")
+            add_to_history(update, context, "assistant", "❓ I understood you want to add media, but I couldn't figure out the title.", sent)
             return
 
         logger.info(f"Initiating search for '{title}' as {media_type}")
@@ -472,8 +476,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 return
             await search_and_display(update, context, title, url, key, 'series')
         else:
-             await update.message.reply_text(f"❓ Ambiguous media type for '{title}'.")
-             add_to_history(context, "assistant", f"Ambiguous media type for '{title}'.")
+             sent = await update.message.reply_text(f"❓ Ambiguous media type for '{title}'.")
+             add_to_history(update, context, "assistant", f"Ambiguous media type for '{title}'.", sent)
 
     async def search_and_display(update: Update, context: ContextTypes.DEFAULT_TYPE, title: str, base_url: str, api_key: str, type_: str):
         endpoint = "movie" if type_ == "movie" else "series"
@@ -488,8 +492,8 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if not results:
                 logger.info("Search returned 0 results.")
-                await update.message.reply_text(f"❌ No results found for '{title}' on {type_.capitalize()} DB.")
-                add_to_history(context, "assistant", f"❌ No results found for '{title}' on {type_.capitalize()} DB.")
+                sent = await update.message.reply_text(f"❌ No results found for '{title}' on {type_.capitalize()} DB.")
+                add_to_history(update, context, "assistant", f"❌ No results found for '{title}' on {type_.capitalize()} DB.", sent)
                 return
             
             # --- Filtering & Sorting ---
@@ -501,8 +505,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 filtered_results.append(item)
             
             if not filtered_results:
-                 await update.message.reply_text(f"❌ No released media found for '**{title}**'.")
-                 add_to_history(context, "assistant", f"❌ No released media found for '**{title}**'.")
+                 sent = await update.message.reply_text(f"❌ No released media found for '**{title}**'.")
+                 add_to_history(update, context, "assistant", f"❌ No released media found for '**{title}**'.", sent)
                  return
 
             # Sort by Popularity
@@ -511,19 +515,14 @@ def register_handlers(app: Application, config: dict, auth_func):
             # Take top 5
             candidates = filtered_results[:5]
             
-            # --- Store State for Carousel ---
-            context.user_data['search_results'] = candidates
-            context.user_data['search_index'] = 0
-            context.user_data['search_type'] = type_
-            
-            # Send first card
-            await send_carousel_card(update, context, is_new=True)
-            add_to_history(context, "assistant", f"Shared search results carousel for '{title}'")
+            # Send first card and persist its state keyed by the message id
+            await start_carousel(update, context, candidates, type_)
+            add_to_history(update, context, "assistant", f"Shared search results carousel for '{title}'")
 
         except Exception as e:
             logger.error(f"Search Exception: {e}")
-            await update.message.reply_text(f"❌ Error communicating with {type_.capitalize()}.")
-            add_to_history(context, "assistant", f"❌ Error communicating with {type_.capitalize()}.")
+            sent = await update.message.reply_text(f"❌ Error communicating with {type_.capitalize()}.")
+            add_to_history(update, context, "assistant", f"❌ Error communicating with {type_.capitalize()}.", sent)
 
     async def lookup_metadata(title: str, year: int, type_: str, user_info: dict):
         # Helper to find specific item in Radarr/Sonarr to get ID and Poster
@@ -573,13 +572,12 @@ def register_handlers(app: Application, config: dict, auth_func):
             
         return f"{prefix}{title}"
 
-    async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, is_new: bool = False):
-        results = context.user_data.get('search_results', [])
-        idx = context.user_data.get('search_index', 0)
-        type_ = context.user_data.get('search_type', 'movie')
-        
+    async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list, idx: int, type_: str, is_new: bool = False):
+        """Render the card at results[idx]. Mutates results in place on lazy
+        metadata loads; the caller is responsible for persisting carousel state.
+        Returns the sent/edited Telegram Message (or None)."""
         if not results or idx < 0 or idx >= len(results):
-            return
+            return None
 
         item = results[idx]
         total = len(results)
@@ -588,12 +586,13 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Check if we have an ID (Radarr/Sonarr ID or TMDB/TVDB ID). 
         # Generated items might be Pydantic models or dicts from API.
         # Use getattr for Pydantic, dict.get for dicts
-        lookup_title = None  # Will be set to original_title for Pydantic items
+        lookup_title = None  # Will be set to original_title where available
         if isinstance(item, dict):
             id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
             t = item.get('title', 'N/A')
             y = item.get('year', 'N/A')
             overview = item.get('overview', 'No description available')
+            lookup_title = item.get('original_title')  # Use original title for Radarr/Sonarr search
         else:
             # Pydantic model from recommendations
             id_val = None  # LLM recommendations don't have IDs yet
@@ -609,19 +608,16 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if full_item:
                 # Preserve localized display fields from LLM
-                if not isinstance(item, dict):
-                    full_item['_display_title'] = t
-                    full_item['_display_overview'] = overview
+                full_item['_display_title'] = t
+                full_item['_display_overview'] = overview
                 results[idx] = full_item
                 item = full_item
-                context.user_data['search_results'] = results # Save back
             else:
                 # Item not found in DB
                 # If it was a Pydantic model, convert to dict to add 'overview'
                 if not isinstance(item, dict):
                     item = item.model_dump() # Convert Pydantic to dict
                     results[idx] = item # Update in results
-                    context.user_data['search_results'] = results
                 item['overview'] = item.get('overview', '❌ Not found in database.')
         
         # Now item is a dict (either from API or lazy-loaded) or a Pydantic model (if lookup failed and it started as one)
@@ -713,9 +709,9 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if is_new:
                 if remote_poster:
-                     await update.message.reply_photo(photo=remote_poster, caption=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                     return await update.message.reply_photo(photo=remote_poster, caption=caption, parse_mode='Markdown', reply_markup=reply_markup)
                 else:
-                     await update.message.reply_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                     return await update.message.reply_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
             elif msg: 
                  if remote_poster:
                       if msg.photo:
@@ -733,9 +729,26 @@ def register_handlers(app: Application, config: dict, auth_func):
                            await msg.edit_caption(caption=caption, parse_mode='Markdown', reply_markup=reply_markup)
                       else:
                            await msg.edit_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                 return msg
 
         except Exception as ex:
             logger.error(f"Error sending/editing card: {ex}")
+        return None
+
+    async def start_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE, items: list, type_: str):
+        """Send a fresh carousel card and persist its state keyed by message id."""
+        sent = await send_carousel_card(update, context, items, 0, type_, is_new=True)
+        if sent:
+            db.save_carousel_state(
+                chat_id=sent.chat_id,
+                message_id=sent.message_id,
+                user_id=update.effective_user.id,
+                media_type=type_,
+                results=items,
+                index=0,
+                session_id=context.user_data.get('session_id'),
+            )
+        return sent
 
     async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -751,14 +764,35 @@ def register_handlers(app: Application, config: dict, auth_func):
 
         if data.startswith("NAV|"):
             direction = data.split("|")[1]
-            idx = context.user_data.get('search_index', 0)
-            
+            chat_id = query.message.chat_id
+            message_id = query.message.message_id
+
+            state = db.get_carousel_state(chat_id, message_id)
+            if not state:
+                await query.answer("This carousel has expired.", show_alert=True)
+                return
+
+            results = state['results']
+            type_ = state['media_type']
+            idx = state['idx']
+            total = len(results)
+
             if direction == "NEXT":
-                context.user_data['search_index'] = idx + 1
+                idx = min(total - 1, idx + 1)
             elif direction == "PREV":
-                context.user_data['search_index'] = max(0, idx - 1)
-            
-            await send_carousel_card(update, context, is_new=False)
+                idx = max(0, idx - 1)
+
+            await send_carousel_card(update, context, results, idx, type_, is_new=False)
+            # Persist mutated results (lazy-loaded metadata) and the new index
+            db.save_carousel_state(
+                chat_id=chat_id,
+                message_id=message_id,
+                user_id=update.effective_user.id,
+                media_type=type_,
+                results=results,
+                index=idx,
+                session_id=state.get('session_id'),
+            )
             await query.answer()
             return
         
@@ -968,10 +1002,35 @@ def register_handlers(app: Application, config: dict, auth_func):
                 pass
 
 
+    async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Wipe the user's stored chat transcript and carousel state."""
+        user_data = auth_func(update.effective_user.id)
+        if not user_data:
+            return
+        context.user_data['user_info'] = user_data
+        removed = db.clear_chat(update.effective_user.id)
+        db.clear_user_carousels(update.effective_user.id)
+        # Confirmation is transient and intentionally not stored in the transcript.
+        await update.message.reply_text(f"🧹 Cleared {removed} stored messages. Starting fresh.")
+
+    async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Keep the stored transcript in sync when a user edits a message."""
+        user_data = auth_func(update.effective_user.id)
+        if not user_data:
+            return
+        edited = update.edited_message
+        if not edited or not edited.text:
+            return
+        updated = db.update_chat_message_text(edited.chat_id, edited.message_id, edited.text)
+        if updated:
+            logger.info(f"Synced edit for message {edited.message_id} in chat {edited.chat_id}")
+
     # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("clear", clear_chat))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & filters.UpdateType.EDITED_MESSAGE, handle_edited_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
     
     return db, jellyfin_client

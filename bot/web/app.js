@@ -185,16 +185,122 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('detail-user-name').textContent = userName;
 
         try {
-            const [mediaRes, llmRes] = await Promise.all([
+            const [mediaRes, llmRes, chatRes] = await Promise.all([
                 fetch(`/admin/api/media-library?user_id=${userId}`),
-                fetch(`/admin/api/llm-logs?user_id=${userId}`)
+                fetch(`/admin/api/llm-logs?user_id=${userId}`),
+                fetch(`/admin/api/chat?user_id=${userId}`)
             ]);
 
             renderMediaLibrary(await mediaRes.json());
             renderUserLlmLogs(await llmRes.json());
+            renderChatTranscript(await chatRes.json());
         } catch (error) {
             console.error('Error fetching user details:', error);
         }
+    }
+
+    /** Render the full chat transcript as alternating user/assistant bubbles. */
+    function renderChatTranscript(messages) {
+        const container = document.getElementById('user-chat-transcript');
+        const countEl = document.getElementById('user-chat-count');
+        if (!container) return;
+
+        const rows = Array.isArray(messages) ? messages : [];
+        if (countEl) countEl.textContent = rows.length;
+
+        if (rows.length === 0) {
+            container.innerHTML = '<div class="chat-empty">No stored messages for this user.</div>';
+            return;
+        }
+
+        // Carousels are stashed by row id so the View button can open a modal.
+        const carouselsByRow = {};
+
+        container.innerHTML = rows.map(m => {
+            const role = m.role === 'user' ? 'user' : 'assistant';
+            const edited = m.edited_at
+                ? '<span class="chat-transcript-edited" title="Edited">edited</span>'
+                : '';
+            const ts = fullDate(m.created_at);
+
+            const metaParts = [`<span>${escapeHtml(ts)}</span>`];
+            if (edited) metaParts.push(edited);
+            if (role === 'assistant' && m.cost_usd != null) {
+                metaParts.push(`<span class="chat-transcript-cost" title="LLM cost for this turn">${formatCost(m.cost_usd)}</span>`);
+            }
+
+            let viewBtn = '';
+            const items = m.carousel && Array.isArray(m.carousel.items) ? m.carousel.items : [];
+            if (role === 'assistant' && items.length) {
+                carouselsByRow[m.id] = m.carousel;
+                const noun = m.carousel.media_type === 'series' ? 'shows' : 'movies';
+                viewBtn = `
+                    <button class="chat-transcript-view" type="button" data-carousel-id="${m.id}">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        View ${items.length} ${noun}
+                    </button>`;
+            }
+
+            return `
+                <div class="chat-transcript-row chat-transcript-${role}">
+                    <div class="chat-transcript-bubble">
+                        <div class="chat-transcript-text">${escapeHtml(m.text || '')}</div>
+                        ${viewBtn}
+                        <div class="chat-transcript-meta">${metaParts.join('')}</div>
+                    </div>
+                </div>`;
+        }).join('');
+
+        container.querySelectorAll('.chat-transcript-view').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const carousel = carouselsByRow[btn.getAttribute('data-carousel-id')];
+                if (carousel) openCarouselModal(carousel);
+            });
+        });
+    }
+
+    /** Open the shared modal showing the titles from a stored carousel. */
+    function openCarouselModal(carousel) {
+        const items = Array.isArray(carousel.items) ? carousel.items : [];
+        const isSeries = carousel.media_type === 'series';
+        modalTitle.textContent = isSeries ? 'Carousel — Shows' : 'Carousel — Movies';
+        setModalTabVisibility(false);
+        setModalWide(true);
+
+        modalMeta.innerHTML = `
+            <div class="meta-item"><strong>Type:</strong> ${isSeries ? 'Series' : 'Movie'}</div>
+            <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
+        `;
+
+        modalBody.innerHTML = '';
+        const pane = document.createElement('div');
+        pane.className = 'modal-pane active';
+
+        if (items.length === 0) {
+            pane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No items stored for this carousel</span></div></div>';
+        } else {
+            const tableRows = items.map(media => {
+                const title = media._display_title || media.title || '—';
+                const orig = media.original_title || '';
+                const year = media.year || '—';
+                const overview = media._display_overview || media.overview || '';
+                return `
+                    <tr>
+                        <td>${escapeHtml(title)}</td>
+                        <td>${escapeHtml(orig || '—')}</td>
+                        <td>${year}</td>
+                        <td class="overview-cell" title="${escapeHtml(overview)}">${escapeHtml(overview || '—')}</td>
+                    </tr>`;
+            }).join('');
+            pane.innerHTML = `
+                <table class="suggested-table">
+                    <thead><tr><th>Title</th><th>Original Title</th><th>Year</th><th>Overview</th></tr></thead>
+                    <tbody>${tableRows}</tbody>
+                </table>`;
+        }
+
+        modalBody.appendChild(pane);
+        modal.classList.add('open');
     }
 
     // ── Formatting helpers ──────────────────────────────────────────

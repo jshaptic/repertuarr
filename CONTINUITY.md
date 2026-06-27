@@ -1,13 +1,16 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-27
-**Goal:** Configurable recommendation candidate pool — per-user `recommendation_sources` mixing popular, top_rated, and discover with per-source counts and media types.
-**Now:** Discover filters use TMDB API query params directly (`with_genres`, `vote_average.gte`, etc.); no legacy `discovery_filter` or name-to-ID translation.
-**Next:** Verify with live RECOMMEND intent traffic; tune per-user source mixes in config.yaml.
+**Date:** 2026-06-28
+**Goal:** DB-backed chat history + message-linked carousels; remove pickle persistence.
+**Now:** Chat transcript + carousel state persisted in SQLite (`bot/database/chat.py`); pickle removed; per-card carousel navigation; admin user page has compact Chat tab; edit sync via `edited_message` + `/clear` command.
+**Next:** Verify live with Telegram traffic (edits, old-card navigation, /clear).
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-28 DB-backed chat + linked carousels: new `bot/database/chat.py` (`ChatMixin`, tables `chat_messages` + `carousel_state`); `add_to_history`/history reads now hit DB; carousels keyed by Telegram `message_id` (any past card stays scrollable); removed `PicklePersistence` from `main.py`; `edited_message` handler + `/clear` command; admin `GET /admin/api/chat` + Chat sub-tab on user page (`app.js?v=23`, `styles.css?v=15`).
+- `[CODE]` 2026-06-28 Chat tab assistant turns show LLM cost + "View titles" button: `carousel_state.session_id` column links carousel to its session; `get_session_costs` (logs.py) + `get_carousels_by_sessions` (chat.py); `api_chat` attaches `cost_usd`/`carousel` to the last assistant message per session; frontend price chip + modal media table; cache `app.js?v=25`, `styles.css?v=17`.
+- `[CODE]` 2026-06-28 Admin Chat tab compact layout: transcript-specific classes avoid collision with modal `.chat-user` styles; tighter bubbles/meta; cache bumped to `app.js?v=24`, `styles.css?v=16`.
 - `[CODE]` 2026-06-27 TMDB-native discover filters: pass-through query params in `bot/tmdb.py`; removed genre/keyword name resolution and `discovery_filter` migration; config uses TMDB IDs/syntax; tests in `tests/test_tmdb_discover.py`.
 - `[CODE]` 2026-06-26 Raw view: request/response side-by-side (`.modal-raw-columns` grid) for AI Raw tab and TMDB modal; modal widens to 1100px via `.modal-wide`; `styles.css?v=13`, `app.js?v=21`.
 - `[CODE]` 2026-06-26 Sessions expand redesign: compact timeline cards with colored left accent border (removed dot markers); `styles.css?v=11`, `app.js?v=18`.
@@ -29,12 +32,14 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/recommendation_pool.py`
-- `bot/tmdb.py`
 - `bot/telegram_bot.py`
-- `config.yaml`
-- `tests/test_recommendation_pool.py`
-- `tests/test_tmdb_discover.py`
+- `bot/database/chat.py`
+- `bot/database/__init__.py`
+- `bot/admin_ui.py`
+- `bot/web/index.html`
+- `bot/web/app.js`
+- `bot/web/styles.css`
+- `main.py`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.
@@ -47,3 +52,4 @@
 - `D009 ACTIVE:` Per-user `recommendation_sources` array; discover `filter` uses TMDB API param names/syntax (`.gte`/`.lte`, comma=AND, pipe=OR); genre/keyword IDs required in config.
 - `D010 ACTIVE:` Bot interaction sessions (UUID per user message) group LLM + TMDB logs; prompt_name uses agent config keys (`intent`, `inquiry`, `recommend`); raw API payloads stored alongside processed logs.
 - `D011 ACTIVE:` Per-LLM `pricing` in config (`input_per_million`, `output_per_million`, `cached_input_per_million` USD); cost computed at log time; missing pricing logs request with `cost_usd` NULL (UI shows em dash).
+- `D012 ACTIVE:` No PTB persistence; chat transcript (`chat_messages`) and carousel state (`carousel_state`) live in SQLite. Transcript = user msgs + bot text answers (transient "thinking"/status not stored). Carousel state keyed by `(chat_id, message_id)` so every card is independently navigable. Edits synced via `edited_message` (no LLM re-run); `/clear` wipes a user's chat + carousels. Telegram delivers no delete/clear events to normal bots, so those are out of scope.

@@ -108,6 +108,40 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
             logger.error(f"Error fetching users summary: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_chat(request):
+        """Return the stored chat transcript for a user."""
+        try:
+            user_id_str = request.query.get('user_id')
+            if not user_id_str:
+                return web.json_response({"error": "user_id is required"}, status=400)
+            user_id = int(user_id_str)
+            limit = int(request.query.get('limit', 200))
+            rows = db.get_chat_messages(user_id=user_id, limit=limit)
+
+            # Attach per-session LLM cost and any produced carousel to the last
+            # assistant message of each session, so the UI shows price + a
+            # "view titles" button once per turn.
+            session_ids = [r['session_id'] for r in rows if r.get('session_id')]
+            costs = db.get_session_costs(session_ids)
+            carousels = db.get_carousels_by_sessions(session_ids)
+
+            last_assistant_id = {}
+            for r in rows:
+                if r['role'] == 'assistant' and r.get('session_id'):
+                    last_assistant_id[r['session_id']] = r['id']
+
+            for r in rows:
+                sid = r.get('session_id')
+                if r['role'] == 'assistant' and sid and last_assistant_id.get(sid) == r['id']:
+                    r['cost_usd'] = costs.get(sid)
+                    if sid in carousels:
+                        r['carousel'] = carousels[sid]
+
+            return web.json_response(rows)
+        except Exception as e:
+            logger.error(f"Error fetching chat: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     async def api_media_library(request):
         """Return unified media library (merged requests + feedback) for a user."""
         try:
@@ -131,6 +165,7 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
     app.router.add_get('/admin/api/sessions/{session_id}', api_session_detail)
     app.router.add_get('/admin/api/users', api_users)
     app.router.add_get('/admin/api/media-library', api_media_library)
+    app.router.add_get('/admin/api/chat', api_chat)
     
     # Define static files directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

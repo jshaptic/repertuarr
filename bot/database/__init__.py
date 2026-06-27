@@ -12,13 +12,14 @@ from typing import List, Optional, Literal
 import os
 
 from bot.database.logs import LogMixin
+from bot.database.chat import ChatMixin
 
 logger = logging.getLogger(__name__)
 
 FeedbackType = Literal['watched', 'disliked', 'ignored']
 
 
-class Database(LogMixin):
+class Database(LogMixin, ChatMixin):
     def __init__(self, db_path: str = "data/media_bot.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -78,6 +79,7 @@ class Database(LogMixin):
         """)
 
         self._init_log_schema(cursor)
+        self._init_chat_schema(cursor)
 
         conn.commit()
         conn.close()
