@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=10">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=14">
 </head>
 <body>
     <div class="app-container">
@@ -297,11 +297,12 @@
                                             <th>Tokens</th>
                                             <th>Cost</th>
                                             <th>Duration</th>
+                                            <th>Status</th>
                                             <th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="llm-tbody">
-                                        <tr><td colspan="9" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
+                                        <tr><td colspan="10" class="empty-state"><div class="empty-state-inner"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Loading AI activity…</span></div></td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -359,6 +360,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=17"></script>
+    <script type="module" src="/admin/static/app.js?v=22"></script>
 </body>
 </html>

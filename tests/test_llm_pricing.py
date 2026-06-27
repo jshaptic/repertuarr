@@ -80,6 +80,7 @@ def test_log_llm_interaction_persists_cost_fields(tmp_path):
         cached_input_tokens=800,
         cost_usd=0.0035,
         llm_name='default',
+        status_code=200,
     )
     logs = db.get_recent_llm_logs(limit=1)
     assert len(logs) == 1
@@ -89,6 +90,7 @@ def test_log_llm_interaction_persists_cost_fields(tmp_path):
     assert row['cached_input_tokens'] == 800
     assert row['cost_usd'] == 0.0035
     assert row['llm_name'] == 'default'
+    assert row['status_code'] == 200
 
 
 def test_get_users_summary_includes_llm_cost(tmp_path):

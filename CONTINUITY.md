@@ -1,13 +1,16 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-25
+**Date:** 2026-06-26
 **Goal:** LLM cost tracking — per-LLM pricing in config, cost per AI request in Logs, aggregated per user.
-**Now:** Sessions table shows user names, session ID, and status on each row (not in expand).
+**Now:** Plain monospace HTTP status (no pills) for TMDB + AI; `status_code` on `llm_logs` (200 on success).
 **Next:** Add `pricing` blocks to local `config.yaml` and verify with live bot traffic.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-26 HTTP status UI: `.http-status` plain text (no pills) for TMDB; `status_code` on `llm_logs`; Status column in AI Activity + modal + session timeline; `styles.css?v=14`, `app.js?v=22`.
+- `[CODE]` 2026-06-26 Raw view: request/response side-by-side (`.modal-raw-columns` grid) for AI Raw tab and TMDB modal; modal widens to 1100px via `.modal-wide`; `styles.css?v=13`, `app.js?v=21`.
+- `[CODE]` 2026-06-26 Sessions expand redesign: compact timeline cards with colored left accent border (removed dot markers); `styles.css?v=11`, `app.js?v=18`.
 - `[CODE]` 2026-06-26 Sessions table: user display names; session ID + status on row (removed from expand meta).
 - `[CODE]` 2026-06-25 TMDB logs: user column via session join; modal shows HTTP request/response blocks instead of chat-style user/assistant bubbles.
 - `[CODE]` 2026-06-25 AI Activity table: user display names instead of IDs; prompts shown as plain text (no color pills).

@@ -86,6 +86,7 @@ class LogMixin:
             "ALTER TABLE llm_logs ADD COLUMN cached_input_tokens INTEGER",
             "ALTER TABLE llm_logs ADD COLUMN cost_usd REAL",
             "ALTER TABLE llm_logs ADD COLUMN llm_name TEXT",
+            "ALTER TABLE llm_logs ADD COLUMN status_code INTEGER",
             "ALTER TABLE tmdb_logs ADD COLUMN session_id TEXT",
         ):
             try:
@@ -213,6 +214,7 @@ class LogMixin:
         cached_input_tokens: Optional[int] = None,
         cost_usd: Optional[float] = None,
         llm_name: Optional[str] = None,
+        status_code: Optional[int] = None,
     ) -> None:
         """Log an LLM interaction to the database."""
         conn = sqlite3.connect(self.db_path)
@@ -222,8 +224,8 @@ class LogMixin:
                 user_id, user_message, intent, llm_request, llm_response,
                 duration_ms, model, tokens, session_id, prompt_name,
                 raw_request, raw_response, input_tokens, output_tokens,
-                cached_input_tokens, cost_usd, llm_name, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cached_input_tokens, cost_usd, llm_name, status_code, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             user_message,
@@ -242,6 +244,7 @@ class LogMixin:
             cached_input_tokens,
             cost_usd,
             llm_name,
+            status_code,
             datetime.now(),
         ))
         conn.commit()

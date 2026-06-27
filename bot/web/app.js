@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Modal elements
     const modal = document.getElementById('llm-modal');
+    const modalContentEl = modal.querySelector('.modal-content');
     const modalCloseBtn = document.getElementById('modal-close');
     const modalTitle = document.getElementById('modal-title');
     const modalBody = document.getElementById('modal-body');
@@ -235,6 +236,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (usd === 0) return '$0.00';
         if (usd < 0.01) return `$${usd.toFixed(4)}`;
         return `$${usd.toFixed(2)}`;
+    }
+
+    /** Plain monospace HTTP status (no pill/badge). */
+    function formatHttpStatus(code) {
+        if (code == null) return '<span class="http-status http-status-unknown">—</span>';
+        const ok = code >= 200 && code < 300;
+        const cls = ok ? 'http-status-ok' : 'http-status-error';
+        return `<span class="http-status ${cls}">${code}</span>`;
     }
 
     /** Format token breakdown (input / output / cached) for a log row. */
@@ -498,18 +507,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('div');
             row.className = `timeline-entry timeline-${entry.type}`;
 
+            const sep = '<span class="timeline-sep">·</span>';
+
             if (entry.type === 'llm') {
                 const log = entry.data;
                 const promptName = logPromptName(log);
+                const meta = [
+                    escapeHtml(log.model || '—'),
+                    formatHttpStatus(log.status_code),
+                    formatTokenBreakdown(log),
+                    formatCost(log.cost_usd),
+                    formatDuration(log.duration_ms)
+                ].join(sep);
                 row.innerHTML = `
-                    <div class="timeline-marker"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-header">
-                            <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">AI · ${escapeHtml(promptName)}</span>
-                            <span class="timeline-meta">${escapeHtml(log.model || '—')} · ${formatTokenBreakdown(log)} · ${formatCost(log.cost_usd)} · ${formatDuration(log.duration_ms)}</span>
-                        </div>
-                        <button class="timeline-view-btn" type="button">View details</button>
+                    <div class="timeline-info">
+                        <span class="pill ${promptPillClass(promptName)} timeline-pill">AI · ${escapeHtml(promptName)}</span>
+                        <span class="timeline-meta">${meta}</span>
                     </div>
+                    <button class="timeline-view-btn" type="button">View</button>
                 `;
                 row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -517,16 +532,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             } else {
                 const log = entry.data;
-                const statusClass = log.status_code >= 200 && log.status_code < 300 ? 'pill-emerald' : 'pill-rose';
+                const meta = [
+                    escapeHtml(log.endpoint || '—'),
+                    formatHttpStatus(log.status_code),
+                    formatDuration(log.duration_ms)
+                ].join(sep);
                 row.innerHTML = `
-                    <div class="timeline-marker"></div>
-                    <div class="timeline-content">
-                        <div class="timeline-header">
-                            <span class="pill pill-blue" style="font-size:0.625rem">TMDB</span>
-                            <span class="timeline-meta">${escapeHtml(log.endpoint || '—')} · <span class="pill ${statusClass}" style="font-size:0.625rem">${log.status_code || 'Error'}</span> · ${formatDuration(log.duration_ms)}</span>
-                        </div>
-                        <button class="timeline-view-btn" type="button">View details</button>
+                    <div class="timeline-info">
+                        <span class="pill pill-blue timeline-pill">TMDB</span>
+                        <span class="timeline-meta">${meta}</span>
                     </div>
+                    <button class="timeline-view-btn" type="button">View</button>
                 `;
                 row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -548,9 +564,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const detail = await res.json();
             const inner = document.createElement('div');
             inner.className = 'expanded-inner';
-            inner.innerHTML = `
-                <h4>Calls (${(detail.llm_logs.length + detail.tmdb_logs.length)})</h4>
-            `;
             inner.appendChild(buildSessionTimelineElement(detail));
             container.innerHTML = '';
             container.appendChild(inner);
@@ -653,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('llm-tbody');
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(9, 'No AI activity yet');
+            tbody.innerHTML = emptyRow(10, 'No AI activity yet');
             return;
         }
 
@@ -670,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="font-size:0.75rem;font-weight:600">${formatTokenBreakdown(item)}</td>
                 <td style="font-size:0.75rem;font-weight:600">${formatCost(item.cost_usd)}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
+                <td>${formatHttpStatus(item.status_code)}</td>
                 <td>
                     <button class="btn-view" title="View conversation">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -707,16 +721,13 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
         data.forEach(item => {
             const tr = document.createElement('tr');
-            
-            // Status pill
-            const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
-            
+
             tr.innerHTML = `
                 <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
                 <td style="color:var(--text-primary);font-weight:500">${escapeHtml(userDisplayName(item.user_id))}</td>
                 <td style="color:var(--text-primary);font-weight:500;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.endpoint)}">${escapeHtml(item.endpoint || '—')}</td>
                 <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
-                <td><span class="pill ${statusClass}">${item.status_code || 'Error'}</span></td>
+                <td>${formatHttpStatus(item.status_code)}</td>
                 <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
                 <td>
                     <button class="btn-view" title="View details">
@@ -739,13 +750,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Modal Logic ─────────────────────────────────────────────────
-    modalCloseBtn.addEventListener('click', () => modal.classList.remove('open'));
+    function closeModal() {
+        modal.classList.remove('open');
+        setTimeout(() => modalContentEl.classList.remove('modal-wide'), 300);
+    }
+
+    function setModalWide(wide) {
+        modalContentEl.classList.toggle('modal-wide', wide);
+    }
+
+    modalCloseBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.classList.remove('open');
+        if (e.target === modal) closeModal();
     });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && modal.classList.contains('open')) {
-            modal.classList.remove('open');
+            closeModal();
         }
     });
 
@@ -772,12 +792,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const promptName = logPromptName(logItem);
         modalTitle.textContent = 'AI Activity';
         setModalTabVisibility(true);
+        setModalWide(true);
 
         modalMeta.innerHTML = `
             <div class="meta-item"><strong>Prompt:</strong> <span class="pill ${promptPillClass(promptName)}" style="font-size:0.625rem">${escapeHtml(promptName)}</span></div>
             <div class="meta-item"><strong>Model:</strong> ${escapeHtml(logItem.model || '—')}</div>
             <div class="meta-item"><strong>Tokens:</strong> ${formatTokenBreakdown(logItem)}</div>
             <div class="meta-item"><strong>Cost:</strong> ${formatCost(logItem.cost_usd)}</div>
+            <div class="meta-item"><strong>Status:</strong> ${formatHttpStatus(logItem.status_code)}</div>
             <div class="meta-item"><strong>Duration:</strong> ${formatDuration(logItem.duration_ms)}</div>
         `;
 
@@ -817,12 +839,15 @@ document.addEventListener('DOMContentLoaded', () => {
         rawPane.setAttribute('data-pane', 'raw');
 
         if (logItem.raw_request || logItem.raw_response) {
+            const rawCols = document.createElement('div');
+            rawCols.className = 'modal-raw-columns';
             if (logItem.raw_request) {
-                rawPane.appendChild(createChatBubble('request', formatJsonBlock(logItem.raw_request)));
+                rawCols.appendChild(createChatBubble('request', formatJsonBlock(logItem.raw_request)));
             }
             if (logItem.raw_response) {
-                rawPane.appendChild(createChatBubble('response', formatJsonBlock(logItem.raw_response)));
+                rawCols.appendChild(createChatBubble('response', formatJsonBlock(logItem.raw_response)));
             }
+            rawPane.appendChild(rawCols);
         } else {
             rawPane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No raw API data recorded (legacy log entry)</span></div></div>';
         }
@@ -843,26 +868,29 @@ document.addEventListener('DOMContentLoaded', () => {
     function openTmdbModal(item) {
         modalTitle.textContent = 'TMDB Request';
         setModalTabVisibility(false);
-        const statusClass = item.status_code >= 200 && item.status_code < 300 ? 'pill-emerald' : 'pill-rose';
+        setModalWide(true);
         modalMeta.innerHTML = `
             <div class="meta-item"><strong>User:</strong> ${escapeHtml(userDisplayName(item.user_id))}</div>
             <div class="meta-item"><strong>Endpoint:</strong> <code style="font-size:0.75rem">${escapeHtml(item.endpoint || '—')}</code></div>
-            <div class="meta-item"><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${item.status_code || 'Error'}</span></div>
+            <div class="meta-item"><strong>Status:</strong> ${formatHttpStatus(item.status_code)}</div>
             <div class="meta-item"><strong>Duration:</strong> ${formatDuration(item.duration_ms)}</div>
         `;
 
         modalBody.innerHTML = '';
 
         const paramsText = item.params ? formatJsonBlock(item.params) : 'None';
-        modalBody.appendChild(createChatBubble('request', `GET ${item.endpoint || ''}\n\nParams:\n${paramsText}`));
+        const rawCols = document.createElement('div');
+        rawCols.className = 'modal-raw-columns';
+        rawCols.appendChild(createChatBubble('request', `GET ${item.endpoint || ''}\n\nParams:\n${paramsText}`));
 
         if (item.error) {
-            modalBody.appendChild(createChatBubble('error', item.error));
+            rawCols.appendChild(createChatBubble('error', item.error));
         } else if (item.response_body) {
-            modalBody.appendChild(createChatBubble('response', formatJsonBlock(item.response_body)));
+            rawCols.appendChild(createChatBubble('response', formatJsonBlock(item.response_body)));
         } else {
-            modalBody.appendChild(createChatBubble('response', '(empty response)'));
+            rawCols.appendChild(createChatBubble('response', '(empty response)'));
         }
+        modalBody.appendChild(rawCols);
 
         modal.classList.add('open');
     }

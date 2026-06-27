@@ -105,6 +105,7 @@ def log_llm_call(
             cached_input_tokens=usage.cached_input_tokens,
             cost_usd=cost_usd,
             llm_name=llm_name,
+            status_code=200,
         )
     except Exception as log_e:
         logger.error(f"Failed to log LLM interaction: {log_e}")
