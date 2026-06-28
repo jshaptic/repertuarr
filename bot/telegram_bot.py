@@ -24,6 +24,7 @@ from bot.database import Database
 from bot.translations import get_text
 from bot.jellyfin import JellyfinClient
 from bot.session_context import set_session_id, reset_session_id
+from bot.service_request import make_service_request
 from bot.llm_logging import log_llm_call
 from bot.recommendation_prompt import (
     build_feedback_message,
@@ -129,6 +130,7 @@ def register_handlers(app: Application, config: dict, auth_func):
     jellyfin_api_key = config.get('jellyfin_api_key')
     if jellyfin_url and jellyfin_api_key:
         jellyfin_client = JellyfinClient(jellyfin_url, jellyfin_api_key)
+        jellyfin_client.db = db
         logger.info("Jellyfin client initialized")
     else:
         logger.info("Jellyfin not configured, skipping watch history sync")
@@ -138,6 +140,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         logger.info("TMDB client initialized")
     else:
         logger.info("TMDB not configured, skipping discovery filtering")
+
+    def arr_service(type_: str) -> str:
+        return 'radarr' if type_ == 'movie' else 'sonarr'
 
     def resolve_arr(user_info: dict, media_type: str):
         """Return (url, key) for the user's configured Radarr or Sonarr instance."""
@@ -167,7 +172,12 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Check Sonarr
         if sonarr_url and sonarr_key:
             try:
-                resp = requests.get(f"{sonarr_url}/api/v3/system/status", headers={'X-Api-Key': sonarr_key}, timeout=5)
+                resp = make_service_request(
+                    db, 'sonarr', 'GET',
+                    f"{sonarr_url}/api/v3/system/status",
+                    headers={'X-Api-Key': sonarr_key},
+                    timeout=5,
+                )
                 if resp.status_code == 200:
                     status_lines.append("✅ Sonarr: Online")
                 else:
@@ -522,7 +532,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         try:
             logger.info(f"Searching API: {lookup_endpoint} term={title}")
             params = {'term': title}
-            resp = requests.get(lookup_endpoint, headers={'X-Api-Key': api_key}, params=params)
+            resp = make_service_request(
+                db, arr_service(type_), 'GET', lookup_endpoint,
+                headers={'X-Api-Key': api_key}, params=params,
+            )
             resp.raise_for_status()
             results = resp.json()
             
@@ -571,7 +584,10 @@ def register_handlers(app: Application, config: dict, auth_func):
             # We search slightly strictly? Or just use lookup and match logic?
             # Lookup is best.
             url = f"{base_url}/api/v3/{endpoint}/lookup"
-            resp = requests.get(url, headers={'X-Api-Key': api_key}, params={'term': title})
+            resp = make_service_request(
+                db, arr_service(type_), 'GET', url,
+                headers={'X-Api-Key': api_key}, params={'term': title},
+            )
             
             if resp.status_code == 200:
                 results = resp.json()
@@ -923,7 +939,10 @@ def register_handlers(app: Application, config: dict, auth_func):
             logger.info(f"Looking up item by ID: {term} in {base_url}")
             # 1. Lookup to get full payload
             params = {'term': term}
-            resp_lookup = requests.get(lookup_endpoint, headers={'X-Api-Key': api_key}, params=params)
+            resp_lookup = make_service_request(
+                db, arr_service(type_), 'GET', lookup_endpoint,
+                headers={'X-Api-Key': api_key}, params=params,
+            )
             resp_lookup.raise_for_status()
             results = resp_lookup.json()
             
@@ -942,14 +961,22 @@ def register_handlers(app: Application, config: dict, auth_func):
 
             # 2. Get Root Folder & Profile
             # Fetch Root Folders
-            rf_resp = requests.get(f"{base_url}/api/v3/rootfolder", headers={'X-Api-Key': api_key})
+            rf_resp = make_service_request(
+                db, arr_service(type_), 'GET',
+                f"{base_url}/api/v3/rootfolder",
+                headers={'X-Api-Key': api_key},
+            )
             root_folders = rf_resp.json()
             if not root_folders:
                 raise Exception("No Root Folders configured")
             root_path = root_folders[0]['path']
             
             # Fetch Quality Profile — match by name if specified, else use first
-            qp_resp = requests.get(f"{base_url}/api/v3/qualityprofile", headers={'X-Api-Key': api_key})
+            qp_resp = make_service_request(
+                db, arr_service(type_), 'GET',
+                f"{base_url}/api/v3/qualityprofile",
+                headers={'X-Api-Key': api_key},
+            )
             profiles = qp_resp.json()
             if not profiles:
                  raise Exception("No Quality Profiles configured")
@@ -981,7 +1008,10 @@ def register_handlers(app: Application, config: dict, auth_func):
                 payload['seasonFolder'] = True
 
             logger.info(f"Sending Add Payload for {candidate.get('title')}")
-            resp_add = requests.post(add_endpoint, headers={'X-Api-Key': api_key}, json=payload)
+            resp_add = make_service_request(
+                db, arr_service(type_), 'POST', add_endpoint,
+                headers={'X-Api-Key': api_key}, json_body=payload,
+            )
             
             if resp_add.status_code == 201:
                 logger.info("Add successful.")

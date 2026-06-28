@@ -165,7 +165,7 @@ class LogMixin:
         return [dict(row) for row in rows]
 
     def get_session_detail(self, session_id: str) -> Optional[dict]:
-        """Return session metadata plus ordered LLM and TMDB logs."""
+        """Return session metadata plus ordered LLM, TMDB, and service API logs."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -186,11 +186,14 @@ class LogMixin:
         """, (session_id,))
         tmdb_logs = [dict(row) for row in cursor.fetchall()]
 
+        service_api_logs = self.get_service_api_logs_for_session(session_id)
+
         conn.close()
         return {
             "session": dict(session_row),
             "llm_logs": llm_logs,
             "tmdb_logs": tmdb_logs,
+            "service_api_logs": service_api_logs,
         }
 
     def get_session_costs(self, session_ids: List[str]) -> dict:

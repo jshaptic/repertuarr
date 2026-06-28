@@ -127,17 +127,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchData() {
         try {
-            const [usersRes, llmRes, tmdbRes, sessionsRes] = await Promise.all([
+            const [usersRes, llmRes, tmdbRes, sessionsRes, mediaMgmtRes, mediaServerRes] = await Promise.all([
                 fetch('/admin/api/users'),
                 fetch('/admin/api/llm-logs'),
                 fetch('/admin/api/tmdb-logs'),
-                fetch('/admin/api/sessions')
+                fetch('/admin/api/sessions'),
+                fetch('/admin/api/service-logs?services=radarr,sonarr'),
+                fetch('/admin/api/service-logs?services=jellyfin'),
             ]);
 
             const users = await usersRes.json();
             const llmLogs = await llmRes.json();
             const tmdbLogs = await tmdbRes.json();
             const sessions = await sessionsRes.json();
+            const mediaMgmtLogs = await mediaMgmtRes.json();
+            const mediaServerLogs = await mediaServerRes.json();
 
             userNameById = Object.fromEntries(
                 users.map(u => [u.user_id, u.name || String(u.user_id)])
@@ -147,6 +151,8 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSessions(sessions);
             renderGlobalLlmLogs(llmLogs);
             renderTmdbLogs(tmdbLogs);
+            renderMediaMgmtLogs(mediaMgmtLogs);
+            renderMediaServerLogs(mediaServerLogs);
 
             // Update dashboard stats
             document.getElementById('stat-users').textContent = users.length || 0;
@@ -670,7 +676,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const entries = [
             ...detail.llm_logs.map(log => ({ type: 'llm', created_at: log.created_at, data: log })),
-            ...detail.tmdb_logs.map(log => ({ type: 'tmdb', created_at: log.created_at, data: log }))
+            ...detail.tmdb_logs.map(log => ({ type: 'tmdb', created_at: log.created_at, data: log })),
+            ...(detail.service_api_logs || []).map(log => ({
+                type: log.service === 'jellyfin' ? 'jellyfin' : 'arr',
+                created_at: log.created_at,
+                data: log,
+            })),
         ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
         if (entries.length === 0) {
@@ -705,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.stopPropagation();
                     openLlmModal(log);
                 });
-            } else {
+            } else if (entry.type === 'tmdb') {
                 const log = entry.data;
                 const meta = [
                     escapeHtml(log.endpoint || '—'),
@@ -722,6 +733,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     openTmdbModal({ ...log, user_id: detail.session.user_id });
+                });
+            } else {
+                const log = entry.data;
+                const isJellyfin = entry.type === 'jellyfin';
+                const serviceLabel = isJellyfin
+                    ? 'Media Server · Jellyfin'
+                    : `Media Mgmt · ${escapeHtml((log.service || 'arr').charAt(0).toUpperCase() + (log.service || 'arr').slice(1))}`;
+                const pillClass = isJellyfin ? 'pill-violet' : 'pill-amber';
+                const meta = [
+                    escapeHtml(log.method || 'GET'),
+                    escapeHtml(log.endpoint || '—'),
+                    formatHttpStatus(log.status_code),
+                    formatDuration(log.duration_ms)
+                ].join(sep);
+                row.innerHTML = `
+                    <div class="timeline-info">
+                        <span class="pill ${pillClass} timeline-pill">${serviceLabel}</span>
+                        <span class="timeline-meta">${meta}</span>
+                    </div>
+                    <button class="timeline-view-btn" type="button">View</button>
+                `;
+                row.querySelector('.timeline-view-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openServiceApiModal({ ...log, user_id: detail.session.user_id });
                 });
             }
 
@@ -924,6 +959,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function renderServiceLogsTable(data, countId, tbodyId, emptyMessage, modalTitle) {
+        document.getElementById(countId).textContent = data.length || 0;
+        const tbody = document.getElementById(tbodyId);
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = emptyRow(8, emptyMessage);
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+            const serviceName = item.service
+                ? item.service.charAt(0).toUpperCase() + item.service.slice(1)
+                : '—';
+
+            tr.innerHTML = `
+                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
+                <td style="color:var(--text-primary);font-weight:500">${escapeHtml(userDisplayName(item.user_id))}</td>
+                <td style="color:var(--text-primary);font-weight:500">${escapeHtml(serviceName)}</td>
+                <td style="color:var(--text-primary);font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(item.endpoint)}">${escapeHtml(item.endpoint || '—')}</td>
+                <td style="font-size:0.7rem;font-family:monospace;color:var(--text-muted)" title="${escapeHtml(item.session_id || '')}">${escapeHtml(shortSessionId(item.session_id))}</td>
+                <td>${formatHttpStatus(item.status_code)}</td>
+                <td style="font-size:0.75rem">${formatDuration(item.duration_ms)}</td>
+                <td>
+                    <button class="btn-view" title="View details">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                </td>
+            `;
+            tr.addEventListener('click', () => openServiceApiModal(item, modalTitle));
+            const sessionCell = tr.children[4];
+            if (item.session_id) {
+                sessionCell.style.cursor = 'pointer';
+                sessionCell.style.color = 'var(--accent-blue)';
+                sessionCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    navigateToSession(item.session_id);
+                });
+            }
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderMediaMgmtLogs(data) {
+        renderServiceLogsTable(
+            data,
+            'media-mgmt-count',
+            'media-mgmt-tbody',
+            'No media management activity yet',
+            'Media Management Request'
+        );
+    }
+
+    function renderMediaServerLogs(data) {
+        renderServiceLogsTable(
+            data,
+            'media-server-count',
+            'media-server-tbody',
+            'No media server activity yet',
+            'Media Server Request'
+        );
+    }
+
     // ── Modal Logic ─────────────────────────────────────────────────
     function closeModal() {
         modal.classList.remove('open');
@@ -1057,6 +1156,47 @@ document.addEventListener('DOMContentLoaded', () => {
         const rawCols = document.createElement('div');
         rawCols.className = 'modal-raw-columns';
         rawCols.appendChild(createChatBubble('request', `GET ${item.endpoint || ''}\n\nParams:\n${paramsText}`));
+
+        if (item.error) {
+            rawCols.appendChild(createChatBubble('error', item.error));
+        } else if (item.response_body) {
+            rawCols.appendChild(createChatBubble('response', formatJsonBlock(item.response_body)));
+        } else {
+            rawCols.appendChild(createChatBubble('response', '(empty response)'));
+        }
+        modalBody.appendChild(rawCols);
+
+        modal.classList.add('open');
+    }
+
+    function openServiceApiModal(item, title = 'Service API Request') {
+        const serviceName = item.service
+            ? item.service.charAt(0).toUpperCase() + item.service.slice(1)
+            : '—';
+        modalTitle.textContent = title;
+        setModalTabVisibility(false);
+        setModalWide(true);
+        modalMeta.innerHTML = `
+            <div class="meta-item"><strong>User:</strong> ${escapeHtml(userDisplayName(item.user_id))}</div>
+            <div class="meta-item"><strong>Service:</strong> ${escapeHtml(serviceName)}</div>
+            <div class="meta-item"><strong>Method:</strong> ${escapeHtml(item.method || 'GET')}</div>
+            <div class="meta-item"><strong>Endpoint:</strong> <code style="font-size:0.75rem">${escapeHtml(item.endpoint || '—')}</code></div>
+            <div class="meta-item"><strong>Status:</strong> ${formatHttpStatus(item.status_code)}</div>
+            <div class="meta-item"><strong>Duration:</strong> ${formatDuration(item.duration_ms)}</div>
+        `;
+
+        modalBody.innerHTML = '';
+
+        const paramsText = item.params ? formatJsonBlock(item.params) : 'None';
+        const bodyText = item.request_body ? formatJsonBlock(item.request_body) : null;
+        let requestContent = `${item.method || 'GET'} ${item.endpoint || ''}\n\nParams:\n${paramsText}`;
+        if (bodyText) {
+            requestContent += `\n\nBody:\n${bodyText}`;
+        }
+
+        const rawCols = document.createElement('div');
+        rawCols.className = 'modal-raw-columns';
+        rawCols.appendChild(createChatBubble('request', requestContent));
 
         if (item.error) {
             rawCols.appendChild(createChatBubble('error', item.error));

@@ -62,6 +62,19 @@ def register_admin_routes(
             logger.error(f"Error fetching TMDB logs: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_service_logs(request):
+        try:
+            limit = int(request.query.get('limit', 100))
+            services_param = request.query.get('services')
+            services = None
+            if services_param:
+                services = [s.strip() for s in services_param.split(',') if s.strip()]
+            rows = db.get_service_api_logs(limit=limit, services=services)
+            return web.json_response(rows)
+        except Exception as e:
+            logger.error(f"Error fetching service API logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     async def api_sessions(request):
         try:
             limit = int(request.query.get('limit', 50))
@@ -205,6 +218,7 @@ def register_admin_routes(
     app.router.add_get('/admin/api/feedback', api_feedback)
     app.router.add_get('/admin/api/llm-logs', api_llm_logs)
     app.router.add_get('/admin/api/tmdb-logs', api_tmdb_logs)
+    app.router.add_get('/admin/api/service-logs', api_service_logs)
     app.router.add_get('/admin/api/sessions', api_sessions)
     app.router.add_get('/admin/api/sessions/{session_id}', api_session_detail)
     app.router.add_get('/admin/api/users', api_users)

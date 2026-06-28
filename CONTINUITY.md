@@ -1,13 +1,14 @@
 # Continuity Ledger
 
 ## Snapshot
-**Date:** 2026-06-28
-**Goal:** `[USER]` 2026-06-28 Recommendation Prompt Restructure.
-**Now:** `[CODE]` 2026-06-29 RECOMMEND system message includes user name/preferences/guidelines; user messages are feedback history + current request/candidates; Lena discover sources have explicit names.
-**Next:** `[TOOL]` 2026-06-28 Optional live Telegram RECOMMEND smoke test with real TMDB/OpenAI credentials.
+**Date:** 2026-06-29
+**Goal:** `[USER]` 2026-06-29 Service API request logging for Radarr, Sonarr, and Jellyfin in admin Logs UI.
+**Now:** `[CODE]` 2026-06-29 Outbound Radarr/Sonarr/Jellyfin HTTP calls logged to `service_api_logs`; admin Logs has Media Management + Media Servers tabs; session timeline includes service API entries.
+**Next:** `[USER]` Optional live smoke test against real Radarr/Sonarr/Jellyfin instances.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-29 Service API logging: `bot/service_request.py` wrapper; `bot/database/service_logs.py` (`ServiceLogMixin`, `service_api_logs`); wired in `jellyfin.py` + `telegram_bot.py`; `GET /admin/api/service-logs`; admin Logs tabs Media Management (Radarr/Sonarr) and Media Servers (Jellyfin); session timeline pills; tests in `tests/test_service_request.py`.
 - `[CODE]` 2026-06-28 Recommendation prompt restructure: optional `recommendation_sources[].name` with generated fallback labels; grouped TMDB candidate fetch; new `bot/recommendation_prompt.py` builds system/profile/feedback/request OpenAI messages; `recommendation.mustache` renders source headers + TMDB overviews.
 - `[CODE]` 2026-06-29 Recommendation prompt follow-up: moved user name/preferences/guidelines into the RECOMMEND system message and named Lena's discover sources in `config.yaml`.
 - `[TOOL]` 2026-06-29 Full tests passed with `PYTHONPATH=. poetry run pytest` (43 passed, 3 sqlite datetime adapter deprecation warnings).
@@ -45,13 +46,14 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/recommendation_pool.py`
-- `bot/recommendation_prompt.py`
-- `bot/tmdb.py`
+- `bot/service_request.py`
+- `bot/database/service_logs.py`
+- `bot/jellyfin.py`
 - `bot/telegram_bot.py`
-- `bot/prompts/recommendation.mustache`
-- `tests/test_recommendation_pool.py`
-- `tests/test_recommendation_prompt.py`
+- `bot/admin_ui.py`
+- `bot/web/app.js`
+- `bot/web/index.html`
+- `tests/test_service_request.py`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.

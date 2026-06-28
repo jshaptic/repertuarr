@@ -1,7 +1,7 @@
 """
-Active session context for correlating TMDB and LLM logs within a bot interaction.
+Active session context for correlating TMDB, LLM, and service API logs within a bot interaction.
 
-Uses a ContextVar so TmdbClient can attach session_id to requests without
+Uses a ContextVar so clients can attach session_id to outbound requests without
 threading it through every method signature.
 """
 
