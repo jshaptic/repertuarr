@@ -211,6 +211,23 @@ class LogMixin:
         conn.close()
         return out
 
+    def get_session_intents(self, session_ids: List[str]) -> dict:
+        """Map session_id -> detected intent for the given sessions."""
+        ids = [s for s in session_ids if s]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" * len(ids))
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT id, detected_intent
+            FROM sessions
+            WHERE id IN ({placeholders})
+        """, ids)
+        out = {row[0]: row[1] for row in cursor.fetchall()}
+        conn.close()
+        return out
+
     # ── LLM Logs ────────────────────────────────────────────────────
 
     def log_llm_interaction(

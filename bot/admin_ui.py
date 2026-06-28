@@ -129,11 +129,11 @@ def register_admin_routes(
             limit = int(request.query.get('limit', 200))
             rows = db.get_chat_messages(user_id=user_id, limit=limit)
 
-            # Attach per-session LLM cost and any produced carousel to the last
-            # assistant message of each session, so the UI shows price + a
-            # "view titles" button once per turn.
+            # Attach per-session LLM cost to the initiating user message, and
+            # any produced carousel to the last assistant message of the turn.
             session_ids = [r['session_id'] for r in rows if r.get('session_id')]
             costs = db.get_session_costs(session_ids)
+            intents = db.get_session_intents(session_ids)
             carousels = db.get_carousels_by_sessions(session_ids)
 
             last_assistant_id = {}
@@ -143,8 +143,10 @@ def register_admin_routes(
 
             for r in rows:
                 sid = r.get('session_id')
-                if r['role'] == 'assistant' and sid and last_assistant_id.get(sid) == r['id']:
+                if r['role'] == 'user' and sid:
+                    r['intent'] = intents.get(sid)
                     r['cost_usd'] = costs.get(sid)
+                if r['role'] == 'assistant' and sid and last_assistant_id.get(sid) == r['id']:
                     if sid in carousels:
                         r['carousel'] = carousels[sid]
 

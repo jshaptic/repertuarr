@@ -2,12 +2,18 @@
 
 ## Snapshot
 **Date:** 2026-06-28
-**Goal:** DB-backed chat history + message-linked carousels; remove pickle persistence.
-**Now:** Admin Chat tab exclusions summary refined: compact "Recent cooldown" + "Feedback exclusions" cards with counts and modal "View titles" buttons.
-**Next:** Verify live in admin UI with users that have retained/excluded titles.
+**Goal:** Admin User Details Chat – full-width layout with clear visual divide between Chat State and transcript.
+**Now:** `.chat-workspace` is full-width (no max-width cap); `gap:0`; chat-state has subtle bg + right padding; chat-panel has `border-left` divider; responsive stacks vertically with `border-top` divider instead; cache `styles.css?v=25`.
+**Next:** Live browser check with real chat sessions.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-28 Chat workspace full-width + visual divider: removed max-width cap; gap:0; chat-state gets subtle bg/padding; chat-panel gets border-left rule; responsive gets border-top instead; cache `styles.css?v=25`.
+- `[CODE]` 2026-06-28 Admin Chat layout tweak: Chat State moved to primary left column and transcript moved to narrower right column; timestamp restored inside bubble header; intent/price/actions remain under bubbles; cache `app.js?v=32`, `styles.css?v=24`.
+- `[CODE]` 2026-06-28 Admin Chat refinements: narrowed chat workspace/stack; moved intent, price, timestamp, and carousel action under bubbles; carousel action now says "View N titles"; stronger intent-specific border + text colors; cache `app.js?v=31`, `styles.css?v=23`.
+- `[CODE]` 2026-06-28 Admin Chat two-column UX: transcript left, recommendation context right; session cost moved from assistant row to user row in `/admin/api/chat`; intent no longer uses `Intent:` label/badge and instead appears as plain value with intent-specific user bubble border color; cache `app.js?v=30`, `styles.css?v=22`.
+- `[CODE]` 2026-06-28 Admin Chat visual overhaul: bubble markup now has speaker/meta header; intent changed from colored badge to quiet `Intent: ...` metadata; Chat panel/exclusion strip flattened with fewer borders/shadows and cleaner spacing; cache `app.js?v=29`, `styles.css?v=21`.
+- `[CODE]` 2026-06-28 Admin User Details Chat redesign: removed Conversations sub-tab and user-specific `/admin/api/llm-logs` fetch/render path; Chat is default; `/admin/api/chat` attaches session `detected_intent` to user rows via `get_session_intents`; user bubbles render intent chips; transcript spacing widened; cache `app.js?v=28`, `styles.css?v=20`.
 - `[CODE]` 2026-06-28 Refined Chat tab exclusion block layout/labels: "Recent cooldown" and "Feedback exclusions" compact summary cards; counts + disabled/enabled "View titles" buttons; modal details tables for retained cooldown items and permanent feedback exclusions; cache `app.js?v=27`, `styles.css?v=19`.
 - `[CODE]` 2026-06-28 Admin Chat tab exclusions block: shows "Temporarily retained" (recent_recommendations cooldown, with per-title expiry countdown) and "Permanently excluded" (watched/disliked/ignored feedback) titles. New `get_recent_recommendations(user_id, ttl_seconds)` (recommendations.py) + `GET /admin/api/exclusions` (admin_ui.py, ttl wired via `register_admin_routes(..., recommendation_exclude_ttl_hours)` from webhook.py); frontend `renderExclusions` + `.exclusions-*` styles; cache `app.js?v=26`, `styles.css?v=18`; tests added in test_recent_recommendations.py.
 - `[CODE]` 2026-06-28 Recommendation cooldown: `bot/database/recommendations.py` (`RecentRecommendationsMixin`, table `recent_recommendations`); merge recent TMDB IDs/titles into RECOMMEND exclusions; record shown carousel items; `/clear` wipes cooldown; config `bot.recommendation_exclude_ttl_hours`; tests in `tests/test_recent_recommendations.py`.
@@ -35,9 +41,8 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/database/recommendations.py`
 - `bot/admin_ui.py`
-- `bot/webhook.py`
+- `bot/database/logs.py`
 - `bot/web/index.html`
 - `bot/web/app.js`
 - `bot/web/styles.css`
@@ -50,7 +55,7 @@
 - `D005 ACTIVE:` Admin UI is served on the same `aiohttp` server as the webhook, unauthenticated by default.
 - `D006 ACTIVE:` Admin UI branding renamed to "Repertuarr".
 - `D007 ACTIVE:` LLM returns `original_title` alongside localized `title`; Radarr/Sonarr lookups use `original_title`, Telegram display uses localized `title`/`overview`.
-- `D008 ACTIVE:` User Details page uses tabbed sub-navigation instead of stacked tables; Conversations tab has expandable rows with nested suggested media sub-tables.
+- `D008 ACTIVE:` User Details page uses tabbed sub-navigation with Chat and Media Library; Chat is the default pane and replaces the removed Conversations section.
 - `D009 ACTIVE:` Per-user `recommendation_sources` array; discover `filter` uses TMDB API param names/syntax (`.gte`/`.lte`, comma=AND, pipe=OR); genre/keyword IDs required in config.
 - `D010 ACTIVE:` Bot interaction sessions (UUID per user message) group LLM + TMDB logs; prompt_name uses agent config keys (`intent`, `inquiry`, `recommend`); raw API payloads stored alongside processed logs.
 - `D011 ACTIVE:` Per-LLM `pricing` in config (`input_per_million`, `output_per_million`, `cached_input_per_million` USD); cost computed at log time; missing pricing logs request with `cost_usd` NULL (UI shows em dash).

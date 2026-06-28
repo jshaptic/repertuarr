@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         switchTab('user-details', userName);
         currentTabSubtitle.textContent = 'User profile';
 
-        // Reset sub-tabs to Conversations
+        // Reset sub-tabs to Chat
         const userPane = document.getElementById('user-details');
         const userDetailTabs = userPane.querySelectorAll('.detail-tab');
         const userDetailPanes = userPane.querySelectorAll('.detail-tab-pane');
@@ -186,15 +186,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('detail-user-name').textContent = userName;
 
         try {
-            const [mediaRes, llmRes, chatRes, exclRes] = await Promise.all([
+            const [mediaRes, chatRes, exclRes] = await Promise.all([
                 fetch(`/admin/api/media-library?user_id=${userId}`),
-                fetch(`/admin/api/llm-logs?user_id=${userId}`),
                 fetch(`/admin/api/chat?user_id=${userId}`),
                 fetch(`/admin/api/exclusions?user_id=${userId}`)
             ]);
 
             renderMediaLibrary(await mediaRes.json());
-            renderUserLlmLogs(await llmRes.json());
             renderChatTranscript(await chatRes.json());
             renderExclusions(await exclRes.json());
         } catch (error) {
@@ -221,35 +219,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = rows.map(m => {
             const role = m.role === 'user' ? 'user' : 'assistant';
+            const speaker = role === 'user' ? 'User' : 'Repertuarr';
+            const intentLabel = role === 'user' && m.intent ? formatIntentLabel(m.intent) : '';
+            const intentClassName = intentClass(m.intent);
             const edited = m.edited_at
                 ? '<span class="chat-transcript-edited" title="Edited">edited</span>'
                 : '';
             const ts = fullDate(m.created_at);
 
-            const metaParts = [`<span>${escapeHtml(ts)}</span>`];
-            if (edited) metaParts.push(edited);
-            if (role === 'assistant' && m.cost_usd != null) {
+            const metaParts = [];
+            if (intentLabel) {
+                metaParts.unshift(`<span class="chat-transcript-intent">${escapeHtml(intentLabel)}</span>`);
+            }
+            if (role === 'user' && m.cost_usd != null) {
                 metaParts.push(`<span class="chat-transcript-cost" title="LLM cost for this turn">${formatCost(m.cost_usd)}</span>`);
             }
+            if (edited) metaParts.push(edited);
+            const metaHtml = metaParts.length
+                ? `<div class="chat-transcript-meta">${metaParts.join('')}</div>`
+                : '';
 
             let viewBtn = '';
             const items = m.carousel && Array.isArray(m.carousel.items) ? m.carousel.items : [];
             if (role === 'assistant' && items.length) {
                 carouselsByRow[m.id] = m.carousel;
-                const noun = m.carousel.media_type === 'series' ? 'shows' : 'movies';
                 viewBtn = `
                     <button class="chat-transcript-view" type="button" data-carousel-id="${m.id}">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                        View ${items.length} ${noun}
+                        View ${items.length} titles
                     </button>`;
             }
 
             return `
-                <div class="chat-transcript-row chat-transcript-${role}">
-                    <div class="chat-transcript-bubble">
-                        <div class="chat-transcript-text">${escapeHtml(m.text || '')}</div>
+                <div class="chat-transcript-row chat-transcript-${role} ${intentClassName}">
+                    <div class="chat-transcript-stack">
+                        <article class="chat-transcript-bubble">
+                            <div class="chat-transcript-head">
+                                <span class="chat-transcript-speaker">${speaker}</span>
+                                <span class="chat-transcript-time">${escapeHtml(ts)}</span>
+                            </div>
+                            <div class="chat-transcript-text">${escapeHtml(m.text || '')}</div>
+                        </article>
                         ${viewBtn}
-                        <div class="chat-transcript-meta">${metaParts.join('')}</div>
+                        ${metaHtml}
                     </div>
                 </div>`;
         }).join('');
@@ -498,6 +510,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return map[promptName] || 'pill-muted';
     }
 
+    /** Human-friendly display label for a detected user intent. */
+    function formatIntentLabel(intent) {
+        const map = {
+            'RECOMMEND': 'Recommend',
+            'INQUIRY': 'Inquiry',
+            'ADD_MEDIA': 'Add media'
+        };
+        const key = String(intent || '').toUpperCase();
+        return map[key] || key.replace(/_/g, ' ').toLowerCase();
+    }
+
+    /** CSS accent class for the detected user intent. */
+    function intentClass(intent) {
+        const map = {
+            'RECOMMEND': 'chat-intent-recommend',
+            'INQUIRY': 'chat-intent-inquiry',
+            'ADD_MEDIA': 'chat-intent-add-media'
+        };
+        return map[String(intent || '').toUpperCase()] || '';
+    }
+
     /** Short display form of a session UUID. */
     function shortSessionId(sessionId) {
         if (!sessionId) return '—';
@@ -625,86 +658,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${excludedPill(item.feedback_type)}</td>
             </tr>
         `).join('');
-    }
-
-    // ── Render: User detail — LLM interactions ──────────────────────
-    function renderUserLlmLogs(data) {
-        const filteredData = data.filter(item =>
-            item.prompt_name !== 'intent' && item.intent !== 'CLASSIFY_INTENT'
-        );
-        document.getElementById('user-llm-count').textContent = filteredData.length || 0;
-        const tbody = document.getElementById('user-llm-tbody');
-
-        if (!filteredData || filteredData.length === 0) {
-            tbody.innerHTML = emptyRow(5, 'No conversations yet');
-            return;
-        }
-
-        tbody.innerHTML = '';
-        filteredData.forEach((item, idx) => {
-            // Parse suggested media items from LLM response
-            let mediaItems = [];
-            if (item.llm_response) {
-                try {
-                    const parsed = JSON.parse(item.llm_response);
-                    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-                        mediaItems = parsed.items;
-                    }
-                } catch (e) { /* non-JSON response, ignore */ }
-            }
-
-            const hasMedia = mediaItems.length > 0;
-            const chevronHtml = hasMedia
-                ? `<span class="expand-chevron"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span>`
-                : '';
-
-            // Main row
-            const mainRow = document.createElement('tr');
-            mainRow.className = hasMedia ? 'expandable-row' : '';
-            mainRow.innerHTML = `
-                <td>${chevronHtml}</td>
-                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)" title="${escapeHtml(item.user_message)}">${escapeHtml(item.user_message || '—')}</td>
-                <td><span class="pill ${promptPillClass(logPromptName(item))}">${escapeHtml(logPromptName(item))}</span></td>
-                <td style="font-size:0.75rem;font-weight:600">${formatCost(item.cost_usd)}</td>
-            `;
-            tbody.appendChild(mainRow);
-
-            // Expanded row with suggested media sub-table
-            if (hasMedia) {
-                const expandRow = document.createElement('tr');
-                expandRow.className = 'expanded-content';
-                const expandCell = document.createElement('td');
-                expandCell.colSpan = 5;
-
-                let tableRows = mediaItems.map(media => `
-                    <tr>
-                        <td>${escapeHtml(media.title || '—')}</td>
-                        <td>${escapeHtml(media.original_title || '—')}</td>
-                        <td>${media.year || '—'}</td>
-                        <td class="overview-cell" title="${escapeHtml(media.overview || '')}">${escapeHtml(media.overview || '—')}</td>
-                    </tr>
-                `).join('');
-
-                expandCell.innerHTML = `
-                    <div class="expanded-inner">
-                        <h4>Suggested Media (${mediaItems.length})</h4>
-                        <table class="suggested-table">
-                            <thead><tr><th>Title</th><th>Original Title</th><th>Year</th><th>Overview</th></tr></thead>
-                            <tbody>${tableRows}</tbody>
-                        </table>
-                    </div>
-                `;
-                expandRow.appendChild(expandCell);
-                tbody.appendChild(expandRow);
-
-                // Toggle expand on click
-                mainRow.addEventListener('click', () => {
-                    mainRow.classList.toggle('expanded');
-                    expandRow.classList.toggle('open');
-                });
-            }
-        });
     }
 
     // ── Render: Sessions table ─────────────────────────────────────
