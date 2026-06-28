@@ -5,8 +5,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def register_admin_routes(app: web.Application, db, users_config: list, messenger_name: str):
+def register_admin_routes(
+    app: web.Application,
+    db,
+    users_config: list,
+    messenger_name: str,
+    recommendation_exclude_ttl_hours: int = 72,
+):
     """Registers admin UI and API routes on the provided aiohttp app"""
+
+    exclude_ttl_seconds = int(recommendation_exclude_ttl_hours) * 3600
+
+    # Feedback types that permanently remove a title from recommendations.
+    PERMANENT_EXCLUSION_TYPES = ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
     
     # Define API handlers
     async def api_requests(request):
@@ -142,6 +153,37 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
             logger.error(f"Error fetching chat: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_exclusions(request):
+        """Return titles excluded from recommendations for a user.
+
+        Two groups:
+          - retained: temporarily held back due to a recent recommendation
+            (cooldown expires after the configured TTL).
+          - excluded: permanently excluded due to watched/disliked/ignored feedback.
+        """
+        try:
+            user_id_str = request.query.get('user_id')
+            if not user_id_str:
+                return web.json_response({"error": "user_id is required"}, status=400)
+            user_id = int(user_id_str)
+
+            retained = db.get_recent_recommendations(user_id, exclude_ttl_seconds)
+
+            feedback = db.get_user_feedback(user_id)
+            excluded = [
+                row for row in feedback
+                if row.get('feedback_type') in PERMANENT_EXCLUSION_TYPES
+            ]
+
+            return web.json_response({
+                "ttl_hours": int(recommendation_exclude_ttl_hours),
+                "retained": retained,
+                "excluded": excluded,
+            })
+        except Exception as e:
+            logger.error(f"Error fetching exclusions: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     async def api_media_library(request):
         """Return unified media library (merged requests + feedback) for a user."""
         try:
@@ -166,6 +208,7 @@ def register_admin_routes(app: web.Application, db, users_config: list, messenge
     app.router.add_get('/admin/api/users', api_users)
     app.router.add_get('/admin/api/media-library', api_media_library)
     app.router.add_get('/admin/api/chat', api_chat)
+    app.router.add_get('/admin/api/exclusions', api_exclusions)
     
     # Define static files directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

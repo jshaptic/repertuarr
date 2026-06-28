@@ -13,13 +13,14 @@ import os
 
 from bot.database.logs import LogMixin
 from bot.database.chat import ChatMixin
+from bot.database.recommendations import RecentRecommendationsMixin
 
 logger = logging.getLogger(__name__)
 
 FeedbackType = Literal['watched', 'disliked', 'ignored']
 
 
-class Database(LogMixin, ChatMixin):
+class Database(LogMixin, ChatMixin, RecentRecommendationsMixin):
     def __init__(self, db_path: str = "data/media_bot.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -80,6 +81,7 @@ class Database(LogMixin, ChatMixin):
 
         self._init_log_schema(cursor)
         self._init_chat_schema(cursor)
+        self._init_recommendations_schema(cursor)
 
         conn.commit()
         conn.close()

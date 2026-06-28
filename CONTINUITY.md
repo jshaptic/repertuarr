@@ -3,11 +3,14 @@
 ## Snapshot
 **Date:** 2026-06-28
 **Goal:** DB-backed chat history + message-linked carousels; remove pickle persistence.
-**Now:** Chat transcript + carousel state persisted in SQLite (`bot/database/chat.py`); pickle removed; per-card carousel navigation; admin user page has compact Chat tab; edit sync via `edited_message` + `/clear` command.
-**Next:** Verify live with Telegram traffic (edits, old-card navigation, /clear).
+**Now:** Admin Chat tab exclusions summary refined: compact "Recent cooldown" + "Feedback exclusions" cards with counts and modal "View titles" buttons.
+**Next:** Verify live in admin UI with users that have retained/excluded titles.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-28 Refined Chat tab exclusion block layout/labels: "Recent cooldown" and "Feedback exclusions" compact summary cards; counts + disabled/enabled "View titles" buttons; modal details tables for retained cooldown items and permanent feedback exclusions; cache `app.js?v=27`, `styles.css?v=19`.
+- `[CODE]` 2026-06-28 Admin Chat tab exclusions block: shows "Temporarily retained" (recent_recommendations cooldown, with per-title expiry countdown) and "Permanently excluded" (watched/disliked/ignored feedback) titles. New `get_recent_recommendations(user_id, ttl_seconds)` (recommendations.py) + `GET /admin/api/exclusions` (admin_ui.py, ttl wired via `register_admin_routes(..., recommendation_exclude_ttl_hours)` from webhook.py); frontend `renderExclusions` + `.exclusions-*` styles; cache `app.js?v=26`, `styles.css?v=18`; tests added in test_recent_recommendations.py.
+- `[CODE]` 2026-06-28 Recommendation cooldown: `bot/database/recommendations.py` (`RecentRecommendationsMixin`, table `recent_recommendations`); merge recent TMDB IDs/titles into RECOMMEND exclusions; record shown carousel items; `/clear` wipes cooldown; config `bot.recommendation_exclude_ttl_hours`; tests in `tests/test_recent_recommendations.py`.
 - `[CODE]` 2026-06-28 DB-backed chat + linked carousels: new `bot/database/chat.py` (`ChatMixin`, tables `chat_messages` + `carousel_state`); `add_to_history`/history reads now hit DB; carousels keyed by Telegram `message_id` (any past card stays scrollable); removed `PicklePersistence` from `main.py`; `edited_message` handler + `/clear` command; admin `GET /admin/api/chat` + Chat sub-tab on user page (`app.js?v=23`, `styles.css?v=15`).
 - `[CODE]` 2026-06-28 Chat tab assistant turns show LLM cost + "View titles" button: `carousel_state.session_id` column links carousel to its session; `get_session_costs` (logs.py) + `get_carousels_by_sessions` (chat.py); `api_chat` attaches `cost_usd`/`carousel` to the last assistant message per session; frontend price chip + modal media table; cache `app.js?v=25`, `styles.css?v=17`.
 - `[CODE]` 2026-06-28 Admin Chat tab compact layout: transcript-specific classes avoid collision with modal `.chat-user` styles; tighter bubbles/meta; cache bumped to `app.js?v=24`, `styles.css?v=16`.
@@ -32,14 +35,13 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/telegram_bot.py`
-- `bot/database/chat.py`
-- `bot/database/__init__.py`
+- `bot/database/recommendations.py`
 - `bot/admin_ui.py`
+- `bot/webhook.py`
 - `bot/web/index.html`
 - `bot/web/app.js`
 - `bot/web/styles.css`
-- `main.py`
+- `tests/test_recent_recommendations.py`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.

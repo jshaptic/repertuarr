@@ -209,7 +209,13 @@ async def start_webhook_server(
     app.router.add_post('/webhook/jellyfin', handle_jellyfin)
     
     # Register Admin UI and API
-    register_admin_routes(app, db, users_config, messenger_name)
+    register_admin_routes(
+        app,
+        db,
+        users_config,
+        messenger_name,
+        recommendation_exclude_ttl_hours=config.get('recommendation_exclude_ttl_hours', 72),
+    )
     
     runner = web.AppRunner(app)
     await runner.setup()

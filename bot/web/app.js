@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailTabs = document.querySelectorAll('.detail-tab');
     const detailPanes = document.querySelectorAll('.detail-tab-pane');
     let pendingSessionExpandId = null;
+    let latestExclusions = { ttl_hours: null, retained: [], excluded: [] };
 
     function switchLogsSubTab(targetId) {
         const logsPane = document.getElementById('logs');
@@ -185,15 +186,17 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('detail-user-name').textContent = userName;
 
         try {
-            const [mediaRes, llmRes, chatRes] = await Promise.all([
+            const [mediaRes, llmRes, chatRes, exclRes] = await Promise.all([
                 fetch(`/admin/api/media-library?user_id=${userId}`),
                 fetch(`/admin/api/llm-logs?user_id=${userId}`),
-                fetch(`/admin/api/chat?user_id=${userId}`)
+                fetch(`/admin/api/chat?user_id=${userId}`),
+                fetch(`/admin/api/exclusions?user_id=${userId}`)
             ]);
 
             renderMediaLibrary(await mediaRes.json());
             renderUserLlmLogs(await llmRes.json());
             renderChatTranscript(await chatRes.json());
+            renderExclusions(await exclRes.json());
         } catch (error) {
             console.error('Error fetching user details:', error);
         }
@@ -257,6 +260,119 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (carousel) openCarouselModal(carousel);
             });
         });
+    }
+
+    /** Render recommendation exclusion summary cards for the current user. */
+    function renderExclusions(data) {
+        const payload = data && typeof data === 'object' ? data : {};
+        const retained = Array.isArray(payload.retained) ? payload.retained : [];
+        const excluded = Array.isArray(payload.excluded) ? payload.excluded : [];
+        const ttlHours = payload.ttl_hours;
+        latestExclusions = { ttl_hours: ttlHours, retained, excluded };
+
+        const retainedSub = document.getElementById('retained-sub');
+        if (retainedSub) {
+            retainedSub.textContent = ttlHours
+                ? `Recently shown titles hidden for ${ttlHours}h.`
+                : 'Recently shown titles hidden until cooldown expires.';
+        }
+
+        const retainedCount = document.getElementById('retained-count');
+        if (retainedCount) retainedCount.textContent = retained.length;
+        const excludedCount = document.getElementById('excluded-count');
+        if (excludedCount) excludedCount.textContent = excluded.length;
+
+        const retainedBtn = document.getElementById('view-retained');
+        if (retainedBtn) {
+            retainedBtn.disabled = retained.length === 0;
+            retainedBtn.onclick = () => openExclusionModal('retained');
+        }
+
+        const excludedBtn = document.getElementById('view-excluded');
+        if (excludedBtn) {
+            excludedBtn.disabled = excluded.length === 0;
+            excludedBtn.onclick = () => openExclusionModal('excluded');
+        }
+    }
+
+    /** Open a modal with retained or permanently excluded titles. */
+    function openExclusionModal(type) {
+        const retained = type === 'retained';
+        const items = retained ? latestExclusions.retained : latestExclusions.excluded;
+        modalTitle.textContent = retained ? 'Recent Cooldown Titles' : 'Feedback Exclusion Titles';
+        setModalTabVisibility(false);
+        setModalWide(true);
+
+        modalMeta.innerHTML = retained
+            ? `
+                <div class="meta-item"><strong>Rule:</strong> recent recommendation cooldown</div>
+                <div class="meta-item"><strong>TTL:</strong> ${latestExclusions.ttl_hours || '—'}h</div>
+                <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
+            `
+            : `
+                <div class="meta-item"><strong>Rule:</strong> user feedback exclusion</div>
+                <div class="meta-item"><strong>Feedback:</strong> watched / disliked / ignored</div>
+                <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
+            `;
+
+        modalBody.innerHTML = '';
+        const pane = document.createElement('div');
+        pane.className = 'modal-pane active';
+
+        if (items.length === 0) {
+            pane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No titles to show</span></div></div>';
+        } else if (retained) {
+            pane.innerHTML = `
+                <table class="suggested-table">
+                    <thead><tr><th>Title</th><th>Original Title</th><th>TMDB</th><th>Recommended</th><th>Cooldown</th></tr></thead>
+                    <tbody>${items.map(item => `
+                        <tr>
+                            <td>${escapeHtml(item.title || item.original_title || '—')}</td>
+                            <td>${escapeHtml(item.original_title || '—')}</td>
+                            <td>${escapeHtml(item.tmdb_id || '—')}</td>
+                            <td>${escapeHtml(fullDate(item.recommended_at) || '—')}</td>
+                            <td>${escapeHtml(formatExpiry(item.expires_at) || '—')}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>`;
+        } else {
+            pane.innerHTML = `
+                <table class="suggested-table">
+                    <thead><tr><th>Title</th><th>Type</th><th>Feedback</th><th>TMDB / TVDB</th><th>Added</th></tr></thead>
+                    <tbody>${items.map(item => `
+                        <tr>
+                            <td>${escapeHtml(item.title || '—')}</td>
+                            <td>${escapeHtml(item.content_type || '—')}</td>
+                            <td><span class="pill pill-sm ${feedbackPillClass(item.feedback_type)}">${escapeHtml(item.feedback_type || 'excluded')}</span></td>
+                            <td>${escapeHtml([item.tmdb_id, item.tvdb_id].filter(Boolean).join(' / ') || '—')}</td>
+                            <td>${escapeHtml(fullDate(item.created_at) || '—')}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>`;
+        }
+
+        modalBody.appendChild(pane);
+        modal.classList.add('open');
+    }
+
+    /** Pick a pill color class for permanent feedback exclusions. */
+    function feedbackPillClass(feedbackType) {
+        const fb = (feedbackType || '').toLowerCase();
+        if (fb === 'watched') return 'feedback-watched';
+        if (fb === 'disliked' || fb === 'dislike') return 'feedback-disliked';
+        return 'feedback-ignored';
+    }
+
+    /** Format a future expiry timestamp as a short "in Xh/Xd" string. */
+    function formatExpiry(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (isNaN(date)) return '';
+        const seconds = Math.floor((date.getTime() - Date.now()) / 1000);
+        if (seconds <= 0) return 'expiring';
+        if (seconds < 3600) return `${Math.max(1, Math.floor(seconds / 60))}m left`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h left`;
+        return `${Math.floor(seconds / 86400)}d left`;
     }
 
     /** Open the shared modal showing the titles from a stored carousel. */

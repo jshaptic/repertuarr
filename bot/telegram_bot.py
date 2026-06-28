@@ -68,6 +68,9 @@ def register_handlers(app: Application, config: dict, auth_func):
     if not openai_clients:
         logger.warning("OpenAI not configured. LLM features will be disabled.")
 
+    recommendation_exclude_ttl_hours = config['recommendation_exclude_ttl_hours']
+    recommendation_exclude_ttl_seconds = recommendation_exclude_ttl_hours * 3600
+
     def get_agent_llm(agent_type: str):
         prompt_cfg = agent_prompts.get(agent_type, {})
         llm_name = prompt_cfg.get('llm')
@@ -372,8 +375,13 @@ def register_handlers(app: Application, config: dict, auth_func):
              tmdb_candidates_data = []
              if tmdb_client:
                  recommendation_sources = resolve_recommendation_sources(user_prefs)
-                 excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id)
-                 tmdb_candidates_list = tmdb_client.get_candidates(recommendation_sources, user_lang, excluded_tmdb_ids)
+                 recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
+                     user_id, recommendation_exclude_ttl_seconds
+                 )
+                 excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id) | recent_tmdb_ids
+                 tmdb_candidates_list = tmdb_client.get_candidates(
+                     recommendation_sources, user_lang, excluded_tmdb_ids
+                 )
                  if tmdb_candidates_list:
                      tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              
@@ -423,15 +431,34 @@ def register_handlers(app: Application, config: dict, auth_func):
                  add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
                  return
              
-             # Filter out watched/disliked content by title
-             user_id = update.effective_user.id
-             excluded_titles = db.get_excluded_titles(user_id)
-             
-             # Keep as Pydantic models, filter by title (case-insensitive)
+             # Filter out watched/disliked/recently recommended content
+             recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
+                 user_id, recommendation_exclude_ttl_seconds
+             )
+             recent_titles = db.get_recent_excluded_titles(
+                 user_id, recommendation_exclude_ttl_seconds
+             )
+             excluded_titles = db.get_excluded_titles(user_id) | recent_titles
+
+             def _is_excluded(item):
+                 if item.title.lower() in excluded_titles:
+                     return True
+                 if item.original_title and item.original_title.lower() in excluded_titles:
+                     return True
+                 if item.tmdb_id and str(item.tmdb_id) in recent_tmdb_ids:
+                     return True
+                 return False
+
              all_items = parsed_response.items
-             items = [item for item in all_items if item.title.lower() not in excluded_titles]
-             
-             logger.info(f"Filtered recommendations: {len(all_items)} -> {len(items)} (excluded {len(excluded_titles)} titles)")
+             items = [item for item in all_items if not _is_excluded(item)]
+
+             logger.info(
+                 "Filtered recommendations: %d -> %d (excluded %d titles, %d recent TMDB ids)",
+                 len(all_items),
+                 len(items),
+                 len(excluded_titles),
+                 len(recent_tmdb_ids),
+             )
              
              if not items:
                  sent = await update.message.reply_text("❌ Couldn't generate recommendations.")
@@ -441,6 +468,7 @@ def register_handlers(app: Application, config: dict, auth_func):
              reply_markup = ReplyKeyboardMarkup([['Recommend more']], resize_keyboard=True, one_time_keyboard=False)
              
              await start_carousel(update, context, list(items), 'movie')
+             db.record_recent_recommendations(user_id, items)
              add_to_history(update, context, "assistant", f"Shared recommendations carousel for '{query}'")
 
         except Exception as e:
@@ -1010,6 +1038,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         context.user_data['user_info'] = user_data
         removed = db.clear_chat(update.effective_user.id)
         db.clear_user_carousels(update.effective_user.id)
+        db.clear_recent_recommendations(update.effective_user.id)
         # Confirmation is transient and intentionally not stored in the transcript.
         await update.message.reply_text(f"🧹 Cleared {removed} stored messages. Starting fresh.")
 

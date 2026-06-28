@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=17">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=19">
 </head>
 <body>
     <div class="app-container">
@@ -220,6 +220,36 @@
 
                     <!-- Chat sub-tab (full conversation transcript) -->
                     <div id="detail-chat" class="detail-tab-pane">
+                        <section class="card glass-effect exclusions-card">
+                            <div class="exclusions-grid">
+                                <div class="exclusions-block">
+                                    <div class="exclusions-head">
+                                        <span class="exclusions-dot dot-amber"></span>
+                                        <div>
+                                            <h3>Recent cooldown</h3>
+                                            <p class="exclusions-sub" id="retained-sub">Recently shown titles hidden until cooldown expires.</p>
+                                        </div>
+                                    </div>
+                                    <div class="exclusions-actions">
+                                        <span class="exclusions-count" id="retained-count">0</span>
+                                        <button class="exclusions-view" id="view-retained" type="button" disabled>View titles</button>
+                                    </div>
+                                </div>
+                                <div class="exclusions-block">
+                                    <div class="exclusions-head">
+                                        <span class="exclusions-dot dot-rose"></span>
+                                        <div>
+                                            <h3>Feedback exclusions</h3>
+                                            <p class="exclusions-sub">Watched, disliked, and ignored titles always hidden.</p>
+                                        </div>
+                                    </div>
+                                    <div class="exclusions-actions">
+                                        <span class="exclusions-count" id="excluded-count">0</span>
+                                        <button class="exclusions-view" id="view-excluded" type="button" disabled>View titles</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
                         <section class="card glass-effect">
                             <div id="user-chat-transcript" class="chat-transcript"></div>
                         </section>
@@ -372,6 +402,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=25"></script>
+    <script type="module" src="/admin/static/app.js?v=27"></script>
 </body>
 </html>

@@ -97,6 +97,15 @@ async def main():
     first_radarr    = next(iter(radarrs_map.values()), {})
     first_jellyfin  = next(iter(media_servers_map.values()), {})
 
+    bot_section = config.get('bot')
+    if not bot_section:
+        raise ValueError("config.yaml must define a 'bot' section")
+    ttl_hours = bot_section.get('recommendation_exclude_ttl_hours')
+    if not isinstance(ttl_hours, (int, float)) or ttl_hours <= 0:
+        raise ValueError(
+            "bot.recommendation_exclude_ttl_hours must be a positive number"
+        )
+
     bot_config = {
         'sonarr_url': first_sonarr.get('url'),
         'sonarr_key': first_sonarr.get('key'),
@@ -104,7 +113,8 @@ async def main():
         'radarr_key': first_radarr.get('key'),
         'jellyfin_url': first_jellyfin.get('url'),
         'jellyfin_api_key': first_jellyfin.get('api_key'),
-        'webhook_port': config.get('bot', {}).get('webhook_port', 8585),
+        'webhook_port': bot_section.get('webhook_port', 8585),
+        'recommendation_exclude_ttl_hours': int(ttl_hours),
         'llms': config.get('llms', []),
         'agent': config.get('agent', {}),
         'radarrs': radarrs_map,
