@@ -1438,6 +1438,16 @@ body {
     flex-shrink: 0;
 }
 
+.chat-transcript-meta .chat-transcript-view {
+    margin-top: 0;
+    font-size: inherit;
+    color: currentColor;
+}
+
+.chat-transcript-meta .chat-transcript-view:hover {
+    color: rgba(255, 255, 255, 0.95);
+}
+
 /* ── Recommendation exclusions block ─────────────────────────────── */
 .chat-state {
     position: sticky;

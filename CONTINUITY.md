@@ -2,12 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-29
-**Goal:** `[USER]` 2026-06-29 Service API request logging for Radarr, Sonarr, and Jellyfin in admin Logs UI.
-**Now:** `[CODE]` 2026-06-29 Outbound Radarr/Sonarr/Jellyfin HTTP calls logged to `service_api_logs`; admin Logs has Media Management + Media Servers tabs; session timeline includes service API entries.
-**Next:** `[USER]` Optional live smoke test against real Radarr/Sonarr/Jellyfin instances.
+**Goal:** `[USER]` 2026-06-29 Link User Details Chat turns to the triggering bot session timeline.
+**Now:** `[CODE]` 2026-06-29 User chat messages with `session_id` render a `View session` action that opens a session dialog with the related timeline.
+**Next:** `[USER]` Optional browser smoke test in Admin UI: open a user Chat, click `View session`, confirm the dialog shows related AI/TMDB/service requests.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-29 Admin User Details Chat now shows `View session` on user messages with a `session_id`; click opens a wide session dialog using the existing session timeline renderer. Cache bumped to `app.js?v=35`, `styles.css?v=29`; diagnostics clean.
 - `[CODE]` 2026-06-29 Service API logging: `bot/service_request.py` wrapper; `bot/database/service_logs.py` (`ServiceLogMixin`, `service_api_logs`); wired in `jellyfin.py` + `telegram_bot.py`; `GET /admin/api/service-logs`; admin Logs tabs Media Management (Radarr/Sonarr) and Media Servers (Jellyfin); session timeline pills; tests in `tests/test_service_request.py`.
 - `[CODE]` 2026-06-28 Recommendation prompt restructure: optional `recommendation_sources[].name` with generated fallback labels; grouped TMDB candidate fetch; new `bot/recommendation_prompt.py` builds system/profile/feedback/request OpenAI messages; `recommendation.mustache` renders source headers + TMDB overviews.
 - `[CODE]` 2026-06-29 Recommendation prompt follow-up: moved user name/preferences/guidelines into the RECOMMEND system message and named Lena's discover sources in `config.yaml`.
@@ -46,13 +47,14 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
+- `bot/web/app.js`
+- `bot/web/styles.css`
+- `bot/web/index.html`
 - `bot/service_request.py`
 - `bot/database/service_logs.py`
 - `bot/jellyfin.py`
 - `bot/telegram_bot.py`
 - `bot/admin_ui.py`
-- `bot/web/app.js`
-- `bot/web/index.html`
 - `tests/test_service_request.py`
 
 ## Decisions

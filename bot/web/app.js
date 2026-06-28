@@ -220,8 +220,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Carousels are stashed by row id so the View button can open a modal.
+        // Related entities are stashed by row id so action buttons can open them.
         const carouselsByRow = {};
+        const sessionsByRow = {};
 
         container.innerHTML = rows.map(m => {
             const role = m.role === 'user' ? 'user' : 'assistant';
@@ -236,6 +237,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const metaParts = [];
             if (intentLabel) {
                 metaParts.unshift(`<span class="chat-transcript-intent">${escapeHtml(intentLabel)}</span>`);
+            }
+            if (role === 'user' && m.session_id) {
+                sessionsByRow[m.id] = m.session_id;
+                metaParts.push(`
+                    <button class="chat-transcript-view chat-transcript-session" type="button" data-session-row-id="${m.id}" title="${escapeHtml(m.session_id)}">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h6"/></svg>
+                        View session
+                    </button>
+                `);
             }
             if (role === 'user' && m.cost_usd != null) {
                 metaParts.push(`<span class="chat-transcript-cost" title="LLM cost for this turn">${formatCost(m.cost_usd)}</span>`);
@@ -272,10 +282,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>`;
         }).join('');
 
-        container.querySelectorAll('.chat-transcript-view').forEach(btn => {
+        container.querySelectorAll('.chat-transcript-view[data-carousel-id]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const carousel = carouselsByRow[btn.getAttribute('data-carousel-id')];
                 if (carousel) openCarouselModal(carousel);
+            });
+        });
+        container.querySelectorAll('.chat-transcript-session').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const sessionId = sessionsByRow[btn.getAttribute('data-session-row-id')];
+                if (sessionId) openSessionModal(sessionId);
             });
         });
     }
@@ -764,6 +781,51 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         return wrapper;
+    }
+
+    async function openSessionModal(sessionId) {
+        modalTitle.textContent = `Session ${shortSessionId(sessionId)}`;
+        setModalTabVisibility(false);
+        setModalWide(true);
+        modalMeta.innerHTML = `
+            <div class="meta-item"><strong>Session:</strong> <code style="font-size:0.75rem">${escapeHtml(sessionId)}</code></div>
+        `;
+        modalBody.innerHTML = '<span class="session-loading">Loading calls…</span>';
+        modal.classList.add('open');
+
+        try {
+            const res = await fetch(`/admin/api/sessions/${sessionId}`);
+            if (!res.ok) throw new Error('Session not found');
+            const detail = await res.json();
+            const session = detail.session || {};
+            const statusClass = sessionStatusPillClass(session.status);
+            const promptCost = (detail.llm_logs || []).reduce((sum, log) => sum + (log.cost_usd || 0), 0);
+
+            modalTitle.textContent = `Session ${shortSessionId(session.id || sessionId)}`;
+            modalMeta.innerHTML = `
+                <div class="meta-item"><strong>User:</strong> ${escapeHtml(userDisplayName(session.user_id))}</div>
+                <div class="meta-item"><strong>Status:</strong> <span class="pill ${statusClass}" style="font-size:0.625rem">${escapeHtml(session.status || '—')}</span></div>
+                <div class="meta-item"><strong>Intent:</strong> ${escapeHtml(formatIntentLabel(session.detected_intent) || '—')}</div>
+                <div class="meta-item"><strong>Started:</strong> ${escapeHtml(fullDate(session.created_at) || '—')}</div>
+                <div class="meta-item"><strong>Duration:</strong> ${formatDuration(session.duration_ms)}</div>
+                <div class="meta-item"><strong>AI Cost:</strong> ${formatCost(promptCost)}</div>
+            `;
+
+            const pane = document.createElement('div');
+            pane.className = 'modal-pane active';
+            if (session.user_message) {
+                const message = document.createElement('div');
+                message.className = 'session-message';
+                message.textContent = session.user_message;
+                pane.appendChild(message);
+            }
+            pane.appendChild(buildSessionTimelineElement(detail));
+            modalBody.innerHTML = '';
+            modalBody.appendChild(pane);
+        } catch (error) {
+            console.error('Error loading session modal:', error);
+            modalBody.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>Failed to load session calls</span></div></div>';
+        }
     }
 
     async function loadSessionExpandContent(sessionId, container) {
