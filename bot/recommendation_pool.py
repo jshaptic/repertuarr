@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 
 VALID_SOURCE_TYPES = frozenset({'popular', 'top_rated', 'discover'})
 VALID_MEDIA_TYPES = frozenset({'movie', 'tv'})
+SOURCE_TYPE_LABELS = {
+    'popular': 'Popular',
+    'top_rated': 'Top rated',
+    'discover': 'Discover',
+}
+MEDIA_TYPE_LABELS = {
+    'movie': 'movies',
+    'tv': 'TV shows',
+}
 LOCAL_SORT_FIELDS = {
     'popularity': 'popularity',
     'vote_average': 'vote_average',
@@ -33,6 +42,10 @@ class RecommendationSourceError(ValueError):
 def validate_source(source: dict, index: int) -> None:
     """Validate a single recommendation source entry."""
     prefix = f"recommendation_sources[{index}]"
+
+    name = source.get('name')
+    if name is not None and (not isinstance(name, str) or not name.strip()):
+        raise RecommendationSourceError(f"{prefix}: name must be a non-empty string when provided")
 
     source_type = source.get('type')
     if source_type not in VALID_SOURCE_TYPES:
@@ -60,6 +73,17 @@ def validate_source(source: dict, index: int) -> None:
         if not isinstance(sort_by, str) or not sort_by.strip():
             raise RecommendationSourceError(f"{prefix}: sort_by must be a non-empty string")
         _validate_sort_by(sort_by, source_type, prefix)
+
+
+def get_source_name(source: dict) -> str:
+    """Return configured source name or a readable generated fallback."""
+    name = source.get('name')
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+
+    source_type = SOURCE_TYPE_LABELS[source['type']]
+    media_type = MEDIA_TYPE_LABELS[source['media_type']]
+    return f"{source_type} {media_type}"
 
 
 def _validate_sort_by(sort_by: str, source_type: str, prefix: str) -> None:
@@ -179,6 +203,50 @@ def _fetch_from_source(tmdb_client, source: dict, language: str, excluded_ids: S
     return items
 
 
+def _build_cache_key(sources: List[dict], language: str, excluded_ids: Set[str], mode: str) -> str:
+    """Build a stable cache key for a candidate fetch shape."""
+    excluded_hash = hashlib.md5(",".join(sorted(excluded_ids)).encode('utf-8')).hexdigest()
+    cache_key_str = json.dumps(sources, sort_keys=True) + language + excluded_hash + mode
+    return hashlib.md5(cache_key_str.encode('utf-8')).hexdigest()
+
+
+def fetch_candidate_groups_from_sources(
+    tmdb_client,
+    sources: List[dict],
+    language: str,
+    excluded_tmdb_ids: Optional[List[Any]] = None,
+) -> List[dict]:
+    """Fetch TMDB candidates grouped by configured recommendation source."""
+    excluded_ids = {str(i) for i in (excluded_tmdb_ids or [])}
+    cache_key = _build_cache_key(sources, language, excluded_ids, 'groups')
+    if cache_key in tmdb_client.candidates_cache:
+        timestamp, data = tmdb_client.candidates_cache[cache_key]
+        if time.time() - timestamp < tmdb_client.cache_ttl:
+            logger.info("Returning grouped TMDB candidates from cache.")
+            return data
+
+    logger.info("Fetching fresh TMDB candidates from %d source(s)...", len(sources))
+
+    groups = []
+    seen: Set[tuple] = set()
+
+    for source in sources:
+        items = _fetch_from_source(tmdb_client, source, language, excluded_ids, seen)
+        enriched_items = [_enrich_genre_names(tmdb_client, item) for item in items]
+        if enriched_items:
+            groups.append({
+                'name': get_source_name(source),
+                'source_type': source['type'],
+                'media_type': source['media_type'],
+                'items': enriched_items,
+            })
+
+    total_items = sum(len(group['items']) for group in groups)
+    logger.info("TMDB fetched %d unique candidates in %d group(s).", total_items, len(groups))
+    tmdb_client.candidates_cache[cache_key] = (time.time(), groups)
+    return groups
+
+
 def fetch_candidates_from_sources(
     tmdb_client,
     sources: List[dict],
@@ -186,32 +254,12 @@ def fetch_candidates_from_sources(
     excluded_tmdb_ids: Optional[List[Any]] = None,
 ) -> List[dict]:
     """Fetch and combine TMDB candidates from configured recommendation sources."""
-    excluded_ids = {str(i) for i in (excluded_tmdb_ids or [])}
-
-    excluded_hash = hashlib.md5(",".join(sorted(excluded_ids)).encode('utf-8')).hexdigest()
-    cache_key_str = json.dumps(sources, sort_keys=True) + language + excluded_hash
-    cache_key = hashlib.md5(cache_key_str.encode('utf-8')).hexdigest()
-
-    if cache_key in tmdb_client.candidates_cache:
-        timestamp, data = tmdb_client.candidates_cache[cache_key]
-        if time.time() - timestamp < tmdb_client.cache_ttl:
-            logger.info("Returning TMDB candidates from cache.")
-            return data
-
-    logger.info("Fetching fresh TMDB candidates from %d source(s)...", len(sources))
-
-    combined_items = []
-    seen: Set[tuple] = set()
-
-    for source in sources:
-        combined_items.extend(_fetch_from_source(tmdb_client, source, language, excluded_ids, seen))
-
-    unique_items = [_enrich_genre_names(tmdb_client, item) for item in combined_items]
+    groups = fetch_candidate_groups_from_sources(tmdb_client, sources, language, excluded_tmdb_ids)
+    unique_items = [item for group in groups for item in group['items']]
     unique_items.sort(
         key=lambda x: (x.get('vote_average', 0) * 10) + x.get('popularity', 0),
         reverse=True,
     )
 
     logger.info("TMDB fetched %d unique candidates.", len(unique_items))
-    tmdb_client.candidates_cache[cache_key] = (time.time(), unique_items)
     return unique_items

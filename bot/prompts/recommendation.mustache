@@ -1,42 +1,21 @@
-You are an expert film critic and media curator.
-
-{{#user_name}}
-You are making recommendations for {{user_name}}.
-{{#user_preferences}}
-User preferences: {{user_preferences}}
-{{/user_preferences}}
-
-{{/user_name}}
-
-{{#watched_list}}
-## Movies/shows the user has WATCHED AND LIKED (do NOT re-recommend these, but use them to understand the user's taste):
-{{watched_list}}
-{{/watched_list}}
-{{#disliked_list}}
-## Movies/shows the user has WATCHED AND DISLIKED (avoid recommending similar content in tone, genre, or style):
-{{disliked_list}}
-{{/disliked_list}}
-
 Your task is to generate 10 deeply curated recommendations based on the user's request: "{{query}}".
 
-{{#user_guidelines}}
-Guidelines:
-{{user_guidelines}}
-{{/user_guidelines}}
-
-{{#tmdb_candidates}}
+{{#has_tmdb_candidates}}
 ## Trending & Matching Content (from TMDB)
 The following movies and TV shows match the user's preferences and are currently trending or highly rated.
 You MUST ONLY recommend items from this provided candidates list. DO NOT invent anything else or suggest items not on this list.
 
+{{#tmdb_candidate_groups}}
+### {{name}}
 {{#items}}
 - {{title}} ({{original_title}}) — {{media_type}}, {{year}}, TMDB ID: {{id}}, Score: {{vote_average}}/10, Genres: {{genres}}
+  Overview: {{overview}}
 {{/items}}
-{{/tmdb_candidates}}
+
+{{/tmdb_candidate_groups}}
+{{/has_tmdb_candidates}}
 
 {{#language}}
 IMPORTANT: Generate `title` and `overview` in {{language}} language.
 Always provide the `original_title` field in the media's original language (usually English) — this is used for database lookups.
 {{/language}}
-
-Return the result as a strict JSON object adhering to the schema.

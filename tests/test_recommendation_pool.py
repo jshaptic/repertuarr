@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 from bot.recommendation_pool import (
     RecommendationSourceError,
+    fetch_candidate_groups_from_sources,
     fetch_candidates_from_sources,
+    get_source_name,
     resolve_recommendation_sources,
     validate_source,
 )
@@ -58,6 +60,22 @@ def test_missing_recommendation_sources_raises():
 def test_empty_recommendation_sources_raises():
     with pytest.raises(RecommendationSourceError):
         resolve_recommendation_sources({'recommendation_sources': []})
+
+
+def test_source_name_is_optional_with_generated_fallback():
+    named_source = {'name': 'Cozy family picks', 'type': 'discover', 'media_type': 'movie', 'count': 5, 'filter': {'with_genres': '35'}}
+    fallback_source = {'type': 'top_rated', 'media_type': 'tv', 'count': 5}
+
+    validate_source(named_source, 0)
+    validate_source(fallback_source, 1)
+
+    assert get_source_name(named_source) == 'Cozy family picks'
+    assert get_source_name(fallback_source) == 'Top rated TV shows'
+
+
+def test_empty_source_name_raises():
+    with pytest.raises(RecommendationSourceError, match="name must be a non-empty string"):
+        validate_source({'name': '  ', 'type': 'popular', 'media_type': 'movie', 'count': 5}, 0)
 
 
 def test_invalid_type_raises():
@@ -170,6 +188,45 @@ def test_fetch_respects_source_counts_and_types():
     assert len(results) == 2
     titles = {r['title'] for r in results}
     assert titles == {'Movie', 'Show'}
+
+
+def test_grouped_fetch_preserves_source_names_and_overviews():
+    movie_item = _make_item(1, 'movie', 'Movie')
+    movie_item['overview'] = 'Movie overview from TMDB'
+    tv_item = _make_item(2, 'tv', 'Show')
+    tv_item['overview'] = 'Show overview from TMDB'
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: [movie_item] if kwargs.get('page') == 1 else [],
+        get_top_rated=lambda **kwargs: [tv_item] if kwargs.get('page') == 1 else [],
+    )
+    sources = [
+        {'name': 'Configured movie source', 'type': 'popular', 'media_type': 'movie', 'count': 1},
+        {'type': 'top_rated', 'media_type': 'tv', 'count': 1},
+    ]
+
+    groups = fetch_candidate_groups_from_sources(client, sources, 'en', [])
+
+    assert [group['name'] for group in groups] == ['Configured movie source', 'Top rated TV shows']
+    assert groups[0]['items'][0]['overview'] == 'Movie overview from TMDB'
+    assert groups[1]['items'][0]['overview'] == 'Show overview from TMDB'
+
+
+def test_grouped_fetch_deduplicates_across_sources():
+    shared_item = _make_item(1, 'movie', 'Shared')
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: [shared_item] if kwargs.get('page') == 1 else [],
+        get_top_rated=lambda **kwargs: [shared_item] if kwargs.get('page') == 1 else [],
+    )
+    sources = [
+        {'type': 'popular', 'media_type': 'movie', 'count': 1},
+        {'type': 'top_rated', 'media_type': 'movie', 'count': 1},
+    ]
+
+    groups = fetch_candidate_groups_from_sources(client, sources, 'en', [])
+
+    assert len(groups) == 1
+    assert groups[0]['name'] == 'Popular movies'
+    assert groups[0]['items'][0]['title'] == 'Shared'
 
 
 def test_genre_names_enriched():

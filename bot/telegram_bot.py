@@ -25,6 +25,11 @@ from bot.translations import get_text
 from bot.jellyfin import JellyfinClient
 from bot.session_context import set_session_id, reset_session_id
 from bot.llm_logging import log_llm_call
+from bot.recommendation_prompt import (
+    build_feedback_message,
+    build_recommendation_input_messages,
+    build_system_message,
+)
 from bot.recommendation_pool import resolve_recommendation_sources
 logger = logging.getLogger(__name__)
 
@@ -372,29 +377,32 @@ def register_handlers(app: Application, config: dict, auth_func):
                  logger.info(f"Merged Jellyfin watched items: {len(jellyfin_watched)} from Jellyfin, {len(watched_titles)} total")
              
              # Ask LLM for list with user context
-             tmdb_candidates_data = []
+             tmdb_candidate_groups = []
              if tmdb_client:
                  recommendation_sources = resolve_recommendation_sources(user_prefs)
                  recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
                      user_id, recommendation_exclude_ttl_seconds
                  )
                  excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id) | recent_tmdb_ids
-                 tmdb_candidates_list = tmdb_client.get_candidates(
+                 tmdb_candidate_groups = tmdb_client.get_candidate_groups(
                      recommendation_sources, user_lang, excluded_tmdb_ids
                  )
-                 if tmdb_candidates_list:
-                     tmdb_candidates_data = [{"items": tmdb_candidates_list}]
              
-             prompt = load_prompt(agent_prompts.get('recommend', {}), 
-                                query=query, 
-                                user_name=user_name,
-                                language=user_lang,
-                                user_preferences=user_preferences,
-                                user_guidelines=user_guidelines,
-                                tmdb_candidates=tmdb_candidates_data,
-                                watched_list=', '.join(watched_titles[:20]) if watched_titles else '',
-                                disliked_list=', '.join(disliked_titles[:20]) if disliked_titles else '')
-             logger.info(f"Sending LLM Request (Recommend): {prompt}")
+             recommendation_prompt = load_prompt(
+                 agent_prompts.get('recommend', {}),
+                 query=query,
+                 language=user_lang,
+                 has_tmdb_candidates=bool(tmdb_candidate_groups),
+                 tmdb_candidate_groups=tmdb_candidate_groups,
+             )
+             system_message = build_system_message(user_name, user_preferences, user_guidelines)
+             feedback_message = build_feedback_message(watched_titles[:20], disliked_titles[:20])
+             recommendation_input = build_recommendation_input_messages(
+                 system_message,
+                 feedback_message,
+                 recommendation_prompt,
+             )
+             logger.info(f"Sending LLM Request (Recommend): {recommendation_input}")
              
              start_time = time.time()
              llm_cfg, current_client = get_agent_llm('recommend')
@@ -403,7 +411,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  
              kwargs = build_llm_kwargs(llm_cfg,
                 model=llm_cfg.get('model', 'gpt-4o-mini'),
-                input=[{"role": "user", "content": prompt}],
+                input=recommendation_input,
                 text_format=RecommendationResponse,
                 tools=[{"type": "web_search"}]
              )

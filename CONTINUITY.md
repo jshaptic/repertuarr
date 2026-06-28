@@ -2,12 +2,16 @@
 
 ## Snapshot
 **Date:** 2026-06-28
-**Goal:** Admin User Details Chat – full-width layout with clear visual divide between Chat State and transcript.
-**Now:** `.chat-workspace` is full-width (no max-width cap); `gap:0`; chat-state has subtle bg + right padding; chat-panel has `border-left` divider; responsive stacks vertically with `border-top` divider instead; cache `styles.css?v=25`.
-**Next:** Live browser check with real chat sessions.
+**Goal:** `[USER]` 2026-06-28 Recommendation Prompt Restructure.
+**Now:** `[CODE]` 2026-06-29 RECOMMEND system message includes user name/preferences/guidelines; user messages are feedback history + current request/candidates; Lena discover sources have explicit names.
+**Next:** `[TOOL]` 2026-06-28 Optional live Telegram RECOMMEND smoke test with real TMDB/OpenAI credentials.
 **Open Questions:** None.
 
 ## Done (recent)
+- `[CODE]` 2026-06-28 Recommendation prompt restructure: optional `recommendation_sources[].name` with generated fallback labels; grouped TMDB candidate fetch; new `bot/recommendation_prompt.py` builds system/profile/feedback/request OpenAI messages; `recommendation.mustache` renders source headers + TMDB overviews.
+- `[CODE]` 2026-06-29 Recommendation prompt follow-up: moved user name/preferences/guidelines into the RECOMMEND system message and named Lena's discover sources in `config.yaml`.
+- `[TOOL]` 2026-06-29 Full tests passed with `PYTHONPATH=. poetry run pytest` (43 passed, 3 sqlite datetime adapter deprecation warnings).
+- `[TOOL]` 2026-06-28 Full tests passed with `PYTHONPATH=. poetry run pytest` (43 passed, 3 sqlite datetime adapter deprecation warnings). Plain focused `poetry run pytest ...` failed collection because `bot` was not on `PYTHONPATH`.
 - `[CODE]` 2026-06-28 Chat workspace full-width + visual divider: removed max-width cap; gap:0; chat-state gets subtle bg/padding; chat-panel gets border-left rule; responsive gets border-top instead; cache `styles.css?v=25`.
 - `[CODE]` 2026-06-28 Admin Chat layout tweak: Chat State moved to primary left column and transcript moved to narrower right column; timestamp restored inside bubble header; intent/price/actions remain under bubbles; cache `app.js?v=32`, `styles.css?v=24`.
 - `[CODE]` 2026-06-28 Admin Chat refinements: narrowed chat workspace/stack; moved intent, price, timestamp, and carousel action under bubbles; carousel action now says "View N titles"; stronger intent-specific border + text colors; cache `app.js?v=31`, `styles.css?v=23`.
@@ -41,12 +45,13 @@
 - `[CODE]` 2026-06-23 Implemented `get_users_summary` in `bot/database.py`.
 
 ## Working Set
-- `bot/admin_ui.py`
-- `bot/database/logs.py`
-- `bot/web/index.html`
-- `bot/web/app.js`
-- `bot/web/styles.css`
-- `tests/test_recent_recommendations.py`
+- `bot/recommendation_pool.py`
+- `bot/recommendation_prompt.py`
+- `bot/tmdb.py`
+- `bot/telegram_bot.py`
+- `bot/prompts/recommendation.mustache`
+- `tests/test_recommendation_pool.py`
+- `tests/test_recommendation_prompt.py`
 
 ## Decisions
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.
@@ -60,3 +65,4 @@
 - `D010 ACTIVE:` Bot interaction sessions (UUID per user message) group LLM + TMDB logs; prompt_name uses agent config keys (`intent`, `inquiry`, `recommend`); raw API payloads stored alongside processed logs.
 - `D011 ACTIVE:` Per-LLM `pricing` in config (`input_per_million`, `output_per_million`, `cached_input_per_million` USD); cost computed at log time; missing pricing logs request with `cost_usd` NULL (UI shows em dash).
 - `D012 ACTIVE:` No PTB persistence; chat transcript (`chat_messages`) and carousel state (`carousel_state`) live in SQLite. Transcript = user msgs + bot text answers (transient "thinking"/status not stored). Carousel state keyed by `(chat_id, message_id)` so every card is independently navigable. Edits synced via `edited_message` (no LLM re-run); `/clear` wipes a user's chat + carousels. Telegram delivers no delete/clear events to normal bots, so those are out of scope.
+- `D013 ACTIVE:` `[CODE]` 2026-06-29 Recommendation source names are optional; prompt display uses configured `name` or generated labels like `Popular movies`/`Top rated TV shows`. RECOMMEND uses separate OpenAI input messages: system contains stable instructions plus user name/preferences/guidelines; user messages contain feedback history and current request/candidates.

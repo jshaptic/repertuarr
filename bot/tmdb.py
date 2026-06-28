@@ -184,3 +184,9 @@ class TmdbClient:
         from bot.recommendation_pool import fetch_candidates_from_sources
 
         return fetch_candidates_from_sources(self, sources, language, excluded_tmdb_ids)
+
+    def get_candidate_groups(self, sources: list, language: str, excluded_tmdb_ids: list = None) -> List[dict]:
+        """Fetch candidate pool grouped by configured recommendation source."""
+        from bot.recommendation_pool import fetch_candidate_groups_from_sources
+
+        return fetch_candidate_groups_from_sources(self, sources, language, excluded_tmdb_ids)
