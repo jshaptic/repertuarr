@@ -76,6 +76,7 @@ def register_handlers(app: Application, config: dict, auth_func):
 
     recommendation_exclude_ttl_hours = config['recommendation_exclude_ttl_hours']
     recommendation_exclude_ttl_seconds = recommendation_exclude_ttl_hours * 3600
+    recommendation_carousel_count = config['recommendation_carousel_count']
 
     def get_agent_llm(agent_type: str):
         prompt_cfg = agent_prompts.get(agent_type, {})
@@ -402,6 +403,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  agent_prompts.get('recommend', {}),
                  query=query,
                  language=user_lang,
+                 recommendation_count=recommendation_carousel_count,
                  has_tmdb_candidates=bool(tmdb_candidate_groups),
                  tmdb_candidate_groups=tmdb_candidate_groups,
              )
@@ -483,10 +485,12 @@ def register_handlers(app: Application, config: dict, auth_func):
                  add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
                  return
 
+             carousel_items = items[:recommendation_carousel_count]
+
              reply_markup = ReplyKeyboardMarkup([['Recommend more']], resize_keyboard=True, one_time_keyboard=False)
              
-             await start_carousel(update, context, list(items), 'movie')
-             db.record_recent_recommendations(user_id, items)
+             await start_carousel(update, context, list(carousel_items), 'movie')
+             db.record_recent_recommendations(user_id, carousel_items)
              add_to_history(update, context, "assistant", f"Shared recommendations carousel for '{query}'")
 
         except Exception as e:

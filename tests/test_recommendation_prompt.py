@@ -75,3 +75,10 @@ def test_recommendation_template_renders_group_headers_and_tmdb_overview():
     assert "### Cozy family picks" in rendered
     assert "Overview: A young bear finds a new home in London." in rendered
     assert "Generate `title` and `overview` in ru language" in rendered
+
+
+def test_recommendation_template_uses_configured_count():
+    template = PROMPT_PATH.read_text()
+    rendered = chevron.render(template, {"query": "sci-fi", "recommendation_count": 7})
+
+    assert "generate 7 deeply curated recommendations" in rendered

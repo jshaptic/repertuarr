@@ -2,13 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-29
-**Goal:** `[USER]` 2026-06-29 Admin carousel titles modal shows TMDB/TVDB IDs instead of overview.
-**Now:** `[CODE]` 2026-06-29 `openCarouselModal` renders TMDB/TVDB column (Radarr/Sonarr + LLM field shapes); overview column removed; cache `app.js?v=36`.
-**Next:** `[USER]` Optional browser smoke test: Chat → View N titles → confirm IDs column.
+**Goal:** `[USER]` 2026-06-29 Configurable recommendation carousel size (`bot.recommendation_carousel_count`).
+**Now:** `[CODE]` 2026-06-29 Added `recommendation_carousel_count` to config/main/telegram_bot; prompt uses `{{recommendation_count}}`; carousel + cooldown record only shown items.
+**Next:** `[USER]` Restart bot after changing count in `config.yaml`.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[CODE]` 2026-06-29 Carousel titles modal: replaced Overview with TMDB/TVDB IDs (`formatMediaIdsHtml` handles `tmdbId`/`tvdbId` and `tmdb_id`/`tvdb_id`); cache `app.js?v=36`.
+- `[CODE]` 2026-06-29 `bot.recommendation_carousel_count`: limits LLM ask + carousel display + recent-recommendation cooldown; default 10 in `config.yaml`; test in `test_recommendation_prompt.py`.
 - `[CODE]` 2026-06-29 Service API logging: `bot/service_request.py` wrapper; `bot/database/service_logs.py` (`ServiceLogMixin`, `service_api_logs`); wired in `jellyfin.py` + `telegram_bot.py`; `GET /admin/api/service-logs`; admin Logs tabs Media Management (Radarr/Sonarr) and Media Servers (Jellyfin); session timeline pills; tests in `tests/test_service_request.py`.
 - `[CODE]` 2026-06-28 Recommendation prompt restructure: optional `recommendation_sources[].name` with generated fallback labels; grouped TMDB candidate fetch; new `bot/recommendation_prompt.py` builds system/profile/feedback/request OpenAI messages; `recommendation.mustache` renders source headers + TMDB overviews.
 - `[CODE]` 2026-06-29 Recommendation prompt follow-up: moved user name/preferences/guidelines into the RECOMMEND system message and named Lena's discover sources in `config.yaml`.

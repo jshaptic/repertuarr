@@ -105,6 +105,11 @@ async def main():
         raise ValueError(
             "bot.recommendation_exclude_ttl_hours must be a positive number"
         )
+    carousel_count = bot_section.get('recommendation_carousel_count')
+    if not isinstance(carousel_count, int) or carousel_count <= 0:
+        raise ValueError(
+            "bot.recommendation_carousel_count must be a positive integer"
+        )
 
     bot_config = {
         'sonarr_url': first_sonarr.get('url'),
@@ -115,6 +120,7 @@ async def main():
         'jellyfin_api_key': first_jellyfin.get('api_key'),
         'webhook_port': bot_section.get('webhook_port', 8585),
         'recommendation_exclude_ttl_hours': int(ttl_hours),
+        'recommendation_carousel_count': carousel_count,
         'llms': config.get('llms', []),
         'agent': config.get('agent', {}),
         'radarrs': radarrs_map,
