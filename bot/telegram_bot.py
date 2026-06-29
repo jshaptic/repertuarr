@@ -415,9 +415,13 @@ def register_handlers(app: Application, config: dict, auth_func):
                  recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
                      user_id, recommendation_exclude_ttl_seconds
                  )
+                 recent_titles = db.get_recent_excluded_titles(
+                     user_id, recommendation_exclude_ttl_seconds
+                 )
                  excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id) | recent_tmdb_ids
+                 excluded_titles = db.get_excluded_titles(user_id) | recent_titles
                  tmdb_candidate_groups = tmdb_client.get_candidate_groups(
-                     recommendation_sources, user_lang, excluded_tmdb_ids
+                     recommendation_sources, user_lang, excluded_tmdb_ids, excluded_titles
                  )
              
              recommendation_prompt = load_prompt(
@@ -473,44 +477,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                      add_to_history=add_to_history, context=context,
                  )
                  return
-             
-             # Filter out watched/disliked/recently recommended content
-             recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
-                 user_id, recommendation_exclude_ttl_seconds
-             )
-             recent_titles = db.get_recent_excluded_titles(
-                 user_id, recommendation_exclude_ttl_seconds
-             )
-             excluded_titles = db.get_excluded_titles(user_id) | recent_titles
 
-             def _is_excluded(item):
-                 if item.title.lower() in excluded_titles:
-                     return True
-                 if item.original_title and item.original_title.lower() in excluded_titles:
-                     return True
-                 if item.tmdb_id and str(item.tmdb_id) in recent_tmdb_ids:
-                     return True
-                 return False
-
-             all_items = parsed_response.items
-             items = [item for item in all_items if not _is_excluded(item)]
-
-             logger.info(
-                 "Filtered recommendations: %d -> %d (excluded %d titles, %d recent TMDB ids)",
-                 len(all_items),
-                 len(items),
-                 len(excluded_titles),
-                 len(recent_tmdb_ids),
-             )
-             
-             if not items:
-                 await reply_bot_text(
-                     update, prefs, phrase_keys.RECOMMEND_FAILED,
-                     add_to_history=add_to_history, context=context,
-                 )
-                 return
-
-             carousel_items = items[:recommendation_carousel_count]
+             carousel_items = parsed_response.items[:recommendation_carousel_count]
 
              await start_carousel(update, context, list(carousel_items), 'movie')
              db.record_recent_recommendations(user_id, carousel_items)

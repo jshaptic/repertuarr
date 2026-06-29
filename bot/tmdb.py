@@ -179,14 +179,30 @@ class TmdbClient:
             logger.error(f"Error fetching top rated {media_type}s: {e}")
             return []
 
-    def get_candidates(self, sources: list, language: str, excluded_tmdb_ids: list = None) -> List[dict]:
+    def get_candidates(
+        self,
+        sources: list,
+        language: str,
+        excluded_tmdb_ids: list = None,
+        excluded_titles: set = None,
+    ) -> List[dict]:
         """Fetch combined candidate pool from configured recommendation sources."""
         from bot.recommendation_pool import fetch_candidates_from_sources
 
-        return fetch_candidates_from_sources(self, sources, language, excluded_tmdb_ids)
+        return fetch_candidates_from_sources(
+            self, sources, language, excluded_tmdb_ids, excluded_titles
+        )
 
-    def get_candidate_groups(self, sources: list, language: str, excluded_tmdb_ids: list = None) -> List[dict]:
+    def get_candidate_groups(
+        self,
+        sources: list,
+        language: str,
+        excluded_tmdb_ids: list = None,
+        excluded_titles: set = None,
+    ) -> List[dict]:
         """Fetch candidate pool grouped by configured recommendation source."""
         from bot.recommendation_pool import fetch_candidate_groups_from_sources
 
-        return fetch_candidate_groups_from_sources(self, sources, language, excluded_tmdb_ids)
+        return fetch_candidate_groups_from_sources(
+            self, sources, language, excluded_tmdb_ids, excluded_titles
+        )

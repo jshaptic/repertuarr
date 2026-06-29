@@ -249,3 +249,74 @@ def test_cache_hit():
     client.get_popular.reset_mock()
     fetch_candidates_from_sources(client, sources, 'en', [])
     client.get_popular.assert_not_called()
+
+
+def test_title_exclusion_with_backfill():
+    excluded = _make_item(1, 'movie', 'Excluded Movie')
+    valid = _make_item(2, 'movie', 'Valid Movie')
+
+    def get_popular(**kwargs):
+        if kwargs.get('page') == 1:
+            return [excluded]
+        if kwargs.get('page') == 2:
+            return [valid]
+        return []
+
+    client = _make_tmdb_client(get_popular=get_popular)
+    sources = [{'type': 'popular', 'media_type': 'movie', 'count': 1}]
+    results = fetch_candidates_from_sources(
+        client, sources, 'en', [], {'excluded movie'}
+    )
+    assert len(results) == 1
+    assert results[0]['title'] == 'Valid Movie'
+    assert client.get_popular.call_count == 2
+
+
+def test_title_exclusion_by_original_title():
+    item = _make_item(1, 'movie', 'Localized')
+    item['original_title'] = 'Original Excluded'
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: [item] if kwargs.get('page') == 1 else [],
+    )
+    sources = [{'type': 'popular', 'media_type': 'movie', 'count': 1}]
+    results = fetch_candidates_from_sources(
+        client, sources, 'en', [], {'original excluded'}
+    )
+    assert results == []
+
+
+def test_combined_id_and_title_exclusion():
+    by_id = _make_item(10, 'movie', 'By Id')
+    by_title = _make_item(11, 'movie', 'By Title')
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: [by_id, by_title] if kwargs.get('page') == 1 else [],
+    )
+    sources = [{'type': 'popular', 'media_type': 'movie', 'count': 2}]
+    results = fetch_candidates_from_sources(
+        client, sources, 'en', ['10'], {'by title'}
+    )
+    assert results == []
+
+
+def test_quota_shortfall_when_all_excluded(caplog):
+    items = [_make_item(i, 'movie', f'Movie {i}') for i in range(1, 4)]
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: items if kwargs.get('page') == 1 else [],
+    )
+    sources = [{'type': 'popular', 'media_type': 'movie', 'count': 2}]
+    excluded_titles = {item['title'].lower() for item in items}
+    results = fetch_candidates_from_sources(client, sources, 'en', [], excluded_titles)
+    assert results == []
+    assert any('TMDB pool exhausted' in record.message for record in caplog.records)
+
+
+def test_cache_bust_on_excluded_titles_change():
+    item = _make_item(1, 'movie')
+    client = _make_tmdb_client(
+        get_popular=lambda **kwargs: [item] if kwargs.get('page') == 1 else [],
+    )
+    sources = [{'type': 'popular', 'media_type': 'movie', 'count': 1}]
+    fetch_candidates_from_sources(client, sources, 'en', [], set())
+    client.get_popular.reset_mock()
+    fetch_candidates_from_sources(client, sources, 'en', [], {'other title'})
+    client.get_popular.assert_called_once()

@@ -33,6 +33,7 @@ LOCAL_SORT_FIELDS = {
     'primary_release_date': 'release_date',
     'first_air_date': 'release_date',
 }
+MAX_FETCH_PAGES = 20
 
 
 class RecommendationSourceError(ValueError):
@@ -118,23 +119,47 @@ def resolve_recommendation_sources(user_prefs: dict) -> List[dict]:
     return sources
 
 
+def _is_excluded_item(item: dict, excluded_ids: Set[str], excluded_titles: Set[str]) -> bool:
+    """Return True when a TMDB item matches permanent or cooldown exclusions."""
+    item_id = item.get('id')
+    if item_id is not None and str(item_id) in excluded_ids:
+        return True
+    title = (item.get('title') or '').lower()
+    if title and title in excluded_titles:
+        return True
+    original_title = (item.get('original_title') or '').lower()
+    if original_title and original_title in excluded_titles:
+        return True
+    return False
+
+
 def _fetch_until_quota(
     fetch_func: Callable,
     target_count: int,
     excluded_ids: Set[str],
+    excluded_titles: Set[str],
     seen: Set[tuple],
     **kwargs,
-) -> List[dict]:
-    """Fetch pages until target_count unique, non-excluded items are collected."""
+) -> tuple[List[dict], int, int]:
+    """Fetch pages until target_count unique, non-excluded items are collected.
+
+    Returns (results, skipped_excluded_count, pages_fetched).
+    """
     results = []
-    for page in range(1, 6):
+    skipped = 0
+    pages_fetched = 0
+    for page in range(1, MAX_FETCH_PAGES + 1):
         if len(results) >= target_count:
             break
         items = fetch_func(page=page, **kwargs)
         if not items:
             break
+        pages_fetched += 1
         for item in items:
-            if str(item.get('id')) in excluded_ids or not item.get('id') or not item.get('title'):
+            if not item.get('id') or not item.get('title'):
+                continue
+            if _is_excluded_item(item, excluded_ids, excluded_titles):
+                skipped += 1
                 continue
             key = (item['media_type'], item['id'])
             if key in seen:
@@ -143,7 +168,7 @@ def _fetch_until_quota(
             results.append(item)
             if len(results) >= target_count:
                 break
-    return results
+    return results, skipped, pages_fetched
 
 
 def _sort_items(items: List[dict], sort_by: str) -> List[dict]:
@@ -173,11 +198,19 @@ def _enrich_genre_names(tmdb_client, item: dict) -> dict:
     return item
 
 
-def _fetch_from_source(tmdb_client, source: dict, language: str, excluded_ids: Set[str], seen: Set[tuple]) -> List[dict]:
+def _fetch_from_source(
+    tmdb_client,
+    source: dict,
+    language: str,
+    excluded_ids: Set[str],
+    excluded_titles: Set[str],
+    seen: Set[tuple],
+) -> List[dict]:
     """Fetch candidates for a single configured source."""
     source_type = source['type']
     media_type = source['media_type']
     count = source['count']
+    source_name = get_source_name(source)
 
     if source_type == 'popular':
         fetch_func = tmdb_client.get_popular
@@ -196,17 +229,52 @@ def _fetch_from_source(tmdb_client, source: dict, language: str, excluded_ids: S
             'media_type': media_type,
         }
 
-    items = _fetch_until_quota(fetch_func, count, excluded_ids, seen, **kwargs)
+    items, skipped, pages_fetched = _fetch_until_quota(
+        fetch_func, count, excluded_ids, excluded_titles, seen, **kwargs
+    )
+    if len(items) < count:
+        logger.warning(
+            "Source %r: %d/%d candidates after %d page(s) (%d excluded); TMDB pool exhausted",
+            source_name,
+            len(items),
+            count,
+            pages_fetched,
+            skipped,
+        )
+    else:
+        logger.info(
+            "Source %r: %d/%d candidates (skipped %d excluded, %d page(s))",
+            source_name,
+            len(items),
+            count,
+            skipped,
+            pages_fetched,
+        )
     sort_by = source.get('sort_by')
     if sort_by and source_type != 'discover':
         items = _sort_items(items, sort_by)
     return items
 
 
-def _build_cache_key(sources: List[dict], language: str, excluded_ids: Set[str], mode: str) -> str:
+def _build_cache_key(
+    sources: List[dict],
+    language: str,
+    excluded_ids: Set[str],
+    excluded_titles: Set[str],
+    mode: str,
+) -> str:
     """Build a stable cache key for a candidate fetch shape."""
-    excluded_hash = hashlib.md5(",".join(sorted(excluded_ids)).encode('utf-8')).hexdigest()
-    cache_key_str = json.dumps(sources, sort_keys=True) + language + excluded_hash + mode
+    excluded_ids_hash = hashlib.md5(",".join(sorted(excluded_ids)).encode('utf-8')).hexdigest()
+    excluded_titles_hash = hashlib.md5(
+        ",".join(sorted(excluded_titles)).encode('utf-8')
+    ).hexdigest()
+    cache_key_str = (
+        json.dumps(sources, sort_keys=True)
+        + language
+        + excluded_ids_hash
+        + excluded_titles_hash
+        + mode
+    )
     return hashlib.md5(cache_key_str.encode('utf-8')).hexdigest()
 
 
@@ -215,10 +283,12 @@ def fetch_candidate_groups_from_sources(
     sources: List[dict],
     language: str,
     excluded_tmdb_ids: Optional[List[Any]] = None,
+    excluded_titles: Optional[Set[str]] = None,
 ) -> List[dict]:
     """Fetch TMDB candidates grouped by configured recommendation source."""
     excluded_ids = {str(i) for i in (excluded_tmdb_ids or [])}
-    cache_key = _build_cache_key(sources, language, excluded_ids, 'groups')
+    title_exclusions = {t.lower() for t in (excluded_titles or set()) if t}
+    cache_key = _build_cache_key(sources, language, excluded_ids, title_exclusions, 'groups')
     if cache_key in tmdb_client.candidates_cache:
         timestamp, data = tmdb_client.candidates_cache[cache_key]
         if time.time() - timestamp < tmdb_client.cache_ttl:
@@ -231,7 +301,9 @@ def fetch_candidate_groups_from_sources(
     seen: Set[tuple] = set()
 
     for source in sources:
-        items = _fetch_from_source(tmdb_client, source, language, excluded_ids, seen)
+        items = _fetch_from_source(
+            tmdb_client, source, language, excluded_ids, title_exclusions, seen
+        )
         enriched_items = [_enrich_genre_names(tmdb_client, item) for item in items]
         if enriched_items:
             groups.append({
@@ -252,9 +324,12 @@ def fetch_candidates_from_sources(
     sources: List[dict],
     language: str,
     excluded_tmdb_ids: Optional[List[Any]] = None,
+    excluded_titles: Optional[Set[str]] = None,
 ) -> List[dict]:
     """Fetch and combine TMDB candidates from configured recommendation sources."""
-    groups = fetch_candidate_groups_from_sources(tmdb_client, sources, language, excluded_tmdb_ids)
+    groups = fetch_candidate_groups_from_sources(
+        tmdb_client, sources, language, excluded_tmdb_ids, excluded_titles
+    )
     unique_items = [item for group in groups for item in group['items']]
     unique_items.sort(
         key=lambda x: (x.get('vote_average', 0) * 10) + x.get('popularity', 0),
