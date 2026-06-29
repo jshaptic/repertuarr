@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Doporuč mi něco
-  - Navrhni něco ke sledování
-  - Najdi mi něco dobrého
   download_ready:
   - 🎉 *{title}* je připraven\! [{play_label}]({url})
-  - 🎉 *{title}* je připraven — [{play_label}]({url})
-  - '🎉 Dobrá zpráva: *{title}* je připraven\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* byl stažen!
-  - 🎉 *{title}* dokončil stahování!
-  - '🎉 Stažení dokončeno: *{title}*!'
   play_button:
   - ▶️ Sledovat na Jellyfin
-  - ▶️ Přehrát na Jellyfin
-  - ▶️ Otevřít v Jellyfin

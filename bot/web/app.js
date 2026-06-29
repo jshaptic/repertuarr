@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `
             : `
                 <div class="meta-item"><strong>Rule:</strong> user feedback exclusion</div>
-                <div class="meta-item"><strong>Feedback:</strong> watched / disliked / ignored</div>
+                <div class="meta-item"><strong>Columns:</strong> watched / feedback / excluded</div>
                 <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
             `;
 
@@ -373,12 +373,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             pane.innerHTML = `
                 <table class="suggested-table">
-                    <thead><tr><th>Title</th><th>Type</th><th>Feedback</th><th>TMDB / TVDB</th><th>Added</th></tr></thead>
+                    <thead><tr><th>Title</th><th>Type</th><th>Watched</th><th>Feedback</th><th>Excluded</th><th>TMDB / TVDB</th><th>Added</th></tr></thead>
                     <tbody>${items.map(item => `
                         <tr>
                             <td>${escapeHtml(item.title || '—')}</td>
                             <td>${escapeHtml(item.content_type || '—')}</td>
-                            <td><span class="pill pill-sm ${feedbackPillClass(item.feedback_type)}">${escapeHtml(item.feedback_type || 'excluded')}</span></td>
+                            <td>${watchedPill(item.watched)}</td>
+                            <td>${feedbackPill(item.feedback)}</td>
+                            <td>${excludedPill(item.excluded)}</td>
                             <td>${escapeHtml([item.tmdb_id, item.tvdb_id].filter(Boolean).join(' / ') || '—')}</td>
                             <td>${escapeHtml(fullDate(item.created_at) || '—')}</td>
                         </tr>
@@ -393,9 +395,37 @@ document.addEventListener('DOMContentLoaded', () => {
     /** Pick a pill color class for permanent feedback exclusions. */
     function feedbackPillClass(feedbackType) {
         const fb = (feedbackType || '').toLowerCase();
-        if (fb === 'watched') return 'feedback-watched';
+        if (fb === 'like' || fb === 'liked') return 'feedback-watched';
         if (fb === 'disliked' || fb === 'dislike') return 'feedback-disliked';
         return 'feedback-ignored';
+    }
+
+    function truthyFlag(value) {
+        return value === true || value === 1 || value === '1';
+    }
+
+    function watchedPill(value) {
+        return truthyFlag(value)
+            ? '<span class="pill pill-emerald">Yes</span>'
+            : '<span class="pill pill-muted">No</span>';
+    }
+
+    function feedbackPill(type) {
+        if (!type) return '<span class="pill pill-muted">—</span>';
+        const normalized = type.toLowerCase();
+        if (normalized === 'like' || normalized === 'liked') {
+            return '<span class="pill pill-emerald">👍 Like</span>';
+        }
+        if (normalized === 'dislike' || normalized === 'disliked') {
+            return '<span class="pill pill-rose">👎 Dislike</span>';
+        }
+        return `<span class="pill pill-muted">${escapeHtml(type)}</span>`;
+    }
+
+    function excludedPill(value) {
+        return truthyFlag(value)
+            ? '<span class="pill pill-rose">🚫 Excluded</span>'
+            : '<span class="pill pill-muted">No</span>';
     }
 
     /** Format a future expiry timestamp as a short "in Xh/Xd" string. */
@@ -634,11 +664,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('user-media-count').textContent = data.length || 0;
         const tbody = document.getElementById('user-media-tbody');
         if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(7, 'No media interactions yet');
+            tbody.innerHTML = emptyRow(8, 'No media interactions yet');
             return;
         }
 
-        // Helpers for rendering feedback/status/excluded pills
+        // Helpers for rendering request status and provider IDs
         function requestPill(status) {
             if (!status) return '<span class="pill pill-muted">—</span>';
             const map = {
@@ -647,29 +677,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             const cls = map[status.toLowerCase()] || 'pill-muted';
             return `<span class="pill ${cls}">${escapeHtml(status)}</span>`;
-        }
-
-        function feedbackPill(type) {
-            if (!type) return '<span class="pill pill-muted">—</span>';
-            const normalized = type.toLowerCase();
-            // Handle both old (dislike/ignore) and new (disliked/ignored) values
-            if (normalized === 'watched') {
-                return '<span class="pill pill-emerald">👍 Liked</span>';
-            } else if (normalized === 'disliked' || normalized === 'dislike') {
-                return '<span class="pill pill-rose">👎 Disliked</span>';
-            } else if (normalized === 'ignored' || normalized === 'ignore') {
-                return '<span class="pill pill-muted">—</span>';
-            }
-            return `<span class="pill pill-muted">${escapeHtml(type)}</span>`;
-        }
-
-        function excludedPill(type) {
-            if (!type) return '';
-            const normalized = type.toLowerCase();
-            if (normalized === 'ignored' || normalized === 'ignore') {
-                return '<span class="pill pill-rose">🚫 Excluded</span>';
-            }
-            return '';
         }
 
         function idsColumn(tmdb_id, tvdb_id) {
@@ -686,8 +693,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="type-label">${escapeHtml(item.media_type || '—')}</td>
                 <td style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.4;">${idsColumn(item.tmdb_id, item.tvdb_id)}</td>
                 <td>${requestPill(item.request_status)}</td>
-                <td>${feedbackPill(item.feedback_type)}</td>
-                <td>${excludedPill(item.feedback_type)}</td>
+                <td>${watchedPill(item.watched)}</td>
+                <td>${feedbackPill(item.feedback)}</td>
+                <td>${excludedPill(item.excluded)}</td>
             </tr>
         `).join('');
     }

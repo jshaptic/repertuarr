@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - 何かおすすめして
-  - 観るものを提案して
-  - いいのを見つけて
   download_ready:
   - 🎉 *{title}* の準備ができました\！ [{play_label}]({url})
-  - 🎉 *{title}* の準備OK — [{play_label}]({url})
-  - 🎉 朗報：*{title}* の準備ができました\！ [{play_label}]({url})
   download_ready_no_url:
   - 🎉 *{title}* がダウンロードされました！
-  - 🎉 *{title}* のダウンロードが完了しました！
-  - 🎉 ダウンロード完了：*{title}*！
   play_button:
   - ▶️ Jellyfinで視聴
-  - ▶️ Jellyfinで見る
-  - ▶️ Jellyfinで開く

@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - मुझे कुछ सुझाओ
-  - देखने के लिए कुछ बताओ
-  - मेरे लिए कुछ अच्छा ढूँढो
   download_ready:
   - 🎉 *{title}* तैयार है\! [{play_label}]({url})
-  - 🎉 *{title}* तैयार है — [{play_label}]({url})
-  - '🎉 खुशखबरी: *{title}* तैयार है\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* डाउनलोड हो गया!
-  - 🎉 *{title}* का डाउनलोड पूरा हुआ!
-  - '🎉 डाउनलोड पूरा: *{title}*!'
   play_button:
   - ▶️ Jellyfin पर देखें
-  - ▶️ Jellyfin पर चलाएँ
-  - ▶️ Jellyfin में खोलें

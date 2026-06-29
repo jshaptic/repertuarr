@@ -16,9 +16,6 @@ def register_admin_routes(
 
     exclude_ttl_seconds = int(recommendation_exclude_ttl_hours) * 3600
 
-    # Feedback types that permanently remove a title from recommendations.
-    PERMANENT_EXCLUSION_TYPES = ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
-    
     # Define API handlers
     async def api_requests(request):
         try:
@@ -174,7 +171,7 @@ def register_admin_routes(
         Two groups:
           - retained: temporarily held back due to a recent recommendation
             (cooldown expires after the configured TTL).
-          - excluded: permanently excluded due to watched/disliked/ignored feedback.
+          - excluded: permanently excluded due to watched/disliked/excluded feedback.
         """
         try:
             user_id_str = request.query.get('user_id')
@@ -187,7 +184,7 @@ def register_admin_routes(
             feedback = db.get_user_feedback(user_id)
             excluded = [
                 row for row in feedback
-                if row.get('feedback_type') in PERMANENT_EXCLUSION_TYPES
+                if row.get('watched') or row.get('feedback') == 'dislike' or row.get('excluded')
             ]
 
             return web.json_response({

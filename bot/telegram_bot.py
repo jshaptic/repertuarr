@@ -667,6 +667,10 @@ def register_handlers(app: Application, config: dict, auth_func):
             
         return f"{prefix}{title}"
 
+    def selected_button_label(selected: bool, label: str) -> str:
+        """Telegram cannot style buttons, so selected state is shown in-label."""
+        return f"☑️{label}" if selected else label
+
     async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list, idx: int, type_: str, is_new: bool = False):
         """Render the card at results[idx]. Mutates results in place on lazy
         metadata loads; the caller is responsible for persisting carousel state.
@@ -744,9 +748,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         footer = get_phrase(prefs, phrase_keys.CAROUSEL_FOOTER, idx=idx + 1, total=total)
         caption = f"🎬 **{t}** ({y})\n{overview}\n\n{footer}"
         
-        # Buttons - Two rows:
-        # Row 1: [⬅️] [➕ Add / ✅ Added] [➡️]
-        # Row 2: [▶️ Play on Jellyfin] or [👁️ Watched] [👎 Dislike]
+        # Buttons:
+        # Row 1: feedback toggles
+        # Row 2: add/download state
+        # Row 3: carousel navigation
         id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
         
         # Check if item is already available
@@ -764,25 +769,35 @@ def register_handlers(app: Application, config: dict, auth_func):
             if not already_available and item.get('id', 0) > 0:
                 already_available = True
         
-        # First row: Feedback actions & Add
-        watched_data = make_safe_callback_data("WATCHED", type_, str(id_val or "0"), t)
-        dislike_data = make_safe_callback_data("DISLIKE", type_, str(id_val or "0"), t)
+        feedback_content_id = db.normalize_content_id(type_, str(id_val or "0"), t)
+        feedback_state = {'watched': False, 'feedback': None, 'excluded': False}
+        if update.effective_user:
+            feedback_state = db.get_content_feedback_state(update.effective_user.id, feedback_content_id)
+
+        watched = bool(feedback_state.get('watched'))
+        feedback = feedback_state.get('feedback')
+        excluded = bool(feedback_state.get('excluded'))
+
+        # First row: feedback actions
         ignore_data = make_safe_callback_data("IGNORE", type_, str(id_val or "0"), t)
-        
-        action_row = [
-            InlineKeyboardButton("👁️👍", callback_data=watched_data),
-            InlineKeyboardButton("👁️👎", callback_data=dislike_data),
-            InlineKeyboardButton("🚫", callback_data=ignore_data)
-        ]
-        
+        watched_data = make_safe_callback_data("WATCHED", type_, str(id_val or "0"), t)
+        disliked_data = make_safe_callback_data("DISLIKED", type_, str(id_val or "0"), t)
+        liked_data = make_safe_callback_data("LIKED", type_, str(id_val or "0"), t)
+
+        rows = [[
+            InlineKeyboardButton(selected_button_label(excluded, "🙈"), callback_data=ignore_data),
+            InlineKeyboardButton(selected_button_label(watched and feedback is None, "👁️"), callback_data=watched_data),
+            InlineKeyboardButton(selected_button_label(watched and feedback == 'dislike', "👁️👎"), callback_data=disliked_data),
+            InlineKeyboardButton(selected_button_label(watched and feedback == 'like', "👁️👍"), callback_data=liked_data),
+        ]]
+
+        # Second row: Add button only
         if id_val:
             add_label = get_phrase(prefs, phrase_keys.INLINE_ADDED) if already_available else get_phrase(prefs, phrase_keys.INLINE_ADD)
             add_button = InlineKeyboardButton(add_label, callback_data="NOP" if already_available else f"ADD|{type_}|{id_val}")
-            action_row.append(add_button)
+            rows.append([add_button])
             
-        rows = [action_row]
-            
-        # Second row: Navigation
+        # Third row: Navigation
         nav_row = []
         if idx > 0:
             nav_row.append(InlineKeyboardButton("⬅️", callback_data="NAV|PREV"))
@@ -899,18 +914,15 @@ def register_handlers(app: Application, config: dict, auth_func):
             await query.answer()
             return
         
-        if data.startswith("WATCHED|") or data.startswith("DISLIKE|") or data.startswith("IGNORE|"):
-            # Format: WATCHED|type|id|title or DISLIKE|type|id|title or IGNORE|type|id|title
-            parts = data.split("|")
+        feedback_actions = ("WATCHED|", "DISLIKED|", "DISLIKE|", "LIKED|", "IGNORE|")
+        if data.startswith(feedback_actions):
+            # Format: ACTION|type|id|title
+            parts = data.split("|", 3)
             raw_action = parts[0].lower()
             content_type = parts[1]
             content_id = parts[2]
             title = parts[3] if len(parts) > 3 else "Unknown"
-            
-            # Normalize to canonical feedback_type values
-            feedback_map = {"watched": "watched", "dislike": "disliked", "ignore": "ignored"}
-            feedback_type = feedback_map.get(raw_action, raw_action)
-            
+
             # Try to recover full non-truncated title from message caption or text
             msg = update.callback_query.message
             if msg:
@@ -924,31 +936,60 @@ def register_handlers(app: Application, config: dict, auth_func):
                         title = recovered_title
             
             user_id = update.effective_user.id
+            feedback_action = {
+                "watched": "watched",
+                "disliked": "dislike",
+                "dislike": "dislike",
+                "liked": "like",
+                "ignore": "ignore",
+            }[raw_action]
+            content_key = db.normalize_content_id(content_type, content_id, title)
             
             # Extract TMDB/TVDB IDs from callback data
             tmdb_id = content_id if content_type == "movie" and content_id != "0" else None
             tvdb_id = content_id if content_type == "series" and content_id != "0" else None
-            
-            # Save feedback to database
-            db.add_feedback(
+
+            db.toggle_feedback_state(
                 user_id=user_id,
-                content_id=content_id,
+                content_id=content_key,
                 content_type=content_type,
                 title=title,
-                feedback_type=feedback_type,
+                action=feedback_action,
                 tmdb_id=tmdb_id,
                 tvdb_id=tvdb_id,
             )
             
-            if feedback_type == "watched":
+            if feedback_action in ("watched", "like"):
                 feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_WATCHED)
-            elif feedback_type == "disliked":
+            elif feedback_action == "dislike":
                 feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_DISLIKED)
             else:
                 feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_IGNORED)
-                
+
             await query.answer(feedback_msg, show_alert=False)
-            logger.info(f"User {user_id} marked {title} as {feedback_type}")
+
+            chat_id = query.message.chat_id
+            message_id = query.message.message_id
+            state = db.get_carousel_state(chat_id, message_id)
+            if state:
+                results = state['results']
+                type_ = state['media_type']
+                idx = state['idx']
+                total = len(results)
+                next_idx = min(total - 1, idx + 1)
+
+                await send_carousel_card(update, context, results, next_idx, type_, is_new=False)
+                db.save_carousel_state(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    user_id=user_id,
+                    media_type=type_,
+                    results=results,
+                    index=next_idx,
+                    session_id=state.get('session_id'),
+                )
+
+            logger.info(f"User {user_id} toggled {feedback_action} for {title}")
             return
 
         if not data.startswith("ADD|"): 

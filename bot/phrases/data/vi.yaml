@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Gợi ý cho tôi cái gì đó
-  - Đề xuất cái gì để xem
-  - Tìm cái hay cho tôi
   download_ready:
   - 🎉 *{title}* đã sẵn sàng\! [{play_label}]({url})
-  - 🎉 *{title}* đã sẵn sàng — [{play_label}]({url})
-  - '🎉 Tin vui: *{title}* đã sẵn sàng\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* đã được tải xuống!
-  - 🎉 *{title}* đã tải xong!
-  - '🎉 Tải xong: *{title}*!'
   play_button:
   - ▶️ Xem trên Jellyfin
-  - ▶️ Phát trên Jellyfin
-  - ▶️ Mở trong Jellyfin

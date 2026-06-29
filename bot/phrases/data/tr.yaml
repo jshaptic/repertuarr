@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Bana bir şey öner
-  - İzleyecek bir şey öner
-  - Bana güzel bir şey bul
   download_ready:
   - 🎉 *{title}* hazır\! [{play_label}]({url})
-  - 🎉 *{title}* hazır — [{play_label}]({url})
-  - '🎉 Güzel haber: *{title}* hazır\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* indirildi!
-  - 🎉 *{title}* indirmesi tamamlandı!
-  - '🎉 İndirme tamam: *{title}*!'
   play_button:
   - ▶️ Jellyfin'de izle
-  - ▶️ Jellyfin'de aç
-  - ▶️ Jellyfin'de oynat

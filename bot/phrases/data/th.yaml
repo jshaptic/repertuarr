@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - แนะนำอะไรให้หน่อย
-  - เสนออะไรให้ดูหน่อย
-  - หาอะไรดีๆ ให้หน่อย
   download_ready:
   - 🎉 *{title}* พร้อมแล้ว\! [{play_label}]({url})
-  - 🎉 *{title}* พร้อมแล้ว — [{play_label}]({url})
-  - '🎉 ข่าวดี: *{title}* พร้อมแล้ว\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* ดาวน์โหลดเรียบร้อย!
-  - 🎉 *{title}* ดาวน์โหลดเสร็จแล้ว!
-  - '🎉 ดาวน์โหลดเสร็จสิ้น: *{title}*!'
   play_button:
   - ▶️ ดูบน Jellyfin
-  - ▶️ เล่นบน Jellyfin
-  - ▶️ เปิดใน Jellyfin

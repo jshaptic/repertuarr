@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - 给我推荐点什么
-  - 推荐个片子看看
-  - 帮我找点好看的
   download_ready:
   - 🎉 *{title}* 已就绪\！ [{play_label}]({url})
-  - 🎉 *{title}* 已就绪 — [{play_label}]({url})
-  - 🎉 好消息：*{title}* 已就绪\！ [{play_label}]({url})
   download_ready_no_url:
   - 🎉 *{title}* 已下载！
-  - 🎉 *{title}* 下载完成！
-  - 🎉 下载完毕：*{title}*！
   play_button:
   - ▶️ 在Jellyfin上观看
-  - ▶️ 在Jellyfin上看
-  - ▶️ 在Jellyfin中打开

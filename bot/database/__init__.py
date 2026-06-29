@@ -18,7 +18,8 @@ from bot.database.service_logs import ServiceLogMixin
 
 logger = logging.getLogger(__name__)
 
-FeedbackType = Literal['watched', 'disliked', 'ignored']
+FeedbackType = Literal['watched', 'liked', 'disliked', 'ignored', 'like', 'dislike', 'ignore']
+FeedbackValue = Literal['like', 'dislike']
 
 
 class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin):
@@ -32,22 +33,7 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_content_feedback (
-                user_id INTEGER NOT NULL,
-                content_id TEXT NOT NULL,
-                content_type TEXT NOT NULL,
-                title TEXT,
-                feedback_type TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, content_id, feedback_type)
-            )
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_user_feedback
-            ON user_content_feedback(user_id, feedback_type)
-        """)
+        self._init_feedback_schema(cursor)
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS media_requests (
@@ -67,8 +53,6 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         for stmt in (
             "ALTER TABLE media_requests ADD COLUMN chat_id INTEGER",
             "ALTER TABLE media_requests ADD COLUMN message_id INTEGER",
-            "ALTER TABLE user_content_feedback ADD COLUMN tmdb_id TEXT",
-            "ALTER TABLE user_content_feedback ADD COLUMN tvdb_id TEXT",
         ):
             try:
                 cursor.execute(stmt)
@@ -91,6 +75,296 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
 
     # ── Content feedback methods ──────────────────────────────────────
 
+    def _create_feedback_table(self, cursor: sqlite3.Cursor) -> None:
+        """Create the normalized feedback table."""
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_content_feedback (
+                user_id INTEGER NOT NULL,
+                content_id TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                title TEXT,
+                watched INTEGER NOT NULL DEFAULT 0,
+                feedback TEXT CHECK (feedback IN ('like', 'dislike') OR feedback IS NULL),
+                excluded INTEGER NOT NULL DEFAULT 0,
+                tmdb_id TEXT,
+                tvdb_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, content_id)
+            )
+        """)
+
+    def _init_feedback_schema(self, cursor: sqlite3.Cursor) -> None:
+        """Create or migrate user feedback to watched/feedback/excluded columns."""
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = 'user_content_feedback'
+        """)
+        table_exists = cursor.fetchone() is not None
+
+        if not table_exists:
+            self._create_feedback_table(cursor)
+        else:
+            cursor.execute("PRAGMA table_info(user_content_feedback)")
+            columns = {row[1] for row in cursor.fetchall()}
+            if 'feedback_type' in columns:
+                self._migrate_legacy_feedback_schema(cursor)
+            else:
+                for stmt in (
+                    "ALTER TABLE user_content_feedback ADD COLUMN watched INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE user_content_feedback ADD COLUMN feedback TEXT",
+                    "ALTER TABLE user_content_feedback ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE user_content_feedback ADD COLUMN tmdb_id TEXT",
+                    "ALTER TABLE user_content_feedback ADD COLUMN tvdb_id TEXT",
+                    "ALTER TABLE user_content_feedback ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                ):
+                    try:
+                        cursor.execute(stmt)
+                    except sqlite3.OperationalError:
+                        pass
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_feedback
+            ON user_content_feedback(user_id, watched, feedback, excluded)
+        """)
+
+    def _migrate_legacy_feedback_schema(self, cursor: sqlite3.Cursor) -> None:
+        """Fold legacy feedback_type rows into one row per content item."""
+        logger.info("Migrating user_content_feedback to normalized feedback columns")
+        cursor.execute("ALTER TABLE user_content_feedback RENAME TO user_content_feedback_legacy")
+        self._create_feedback_table(cursor)
+
+        cursor.execute("SELECT * FROM user_content_feedback_legacy")
+        column_names = [description[0] for description in cursor.description]
+        rows = [dict(zip(column_names, row)) for row in cursor.fetchall()]
+        migrated = {}
+
+        for row in rows:
+            content_id = self.normalize_content_id(
+                row['content_type'],
+                row['content_id'],
+                row.get('title'),
+            )
+            key = (row['user_id'], content_id)
+            state = migrated.setdefault(
+                key,
+                {
+                    'user_id': row['user_id'],
+                    'content_id': content_id,
+                    'content_type': row['content_type'],
+                    'title': row.get('title'),
+                    'watched': 0,
+                    'feedback': None,
+                    'excluded': 0,
+                    'tmdb_id': row.get('tmdb_id'),
+                    'tvdb_id': row.get('tvdb_id'),
+                    'created_at': row.get('created_at'),
+                    'updated_at': row.get('created_at'),
+                },
+            )
+
+            for field in ('title', 'tmdb_id', 'tvdb_id'):
+                if not state.get(field) and row.get(field):
+                    state[field] = row[field]
+            if row.get('created_at') and (
+                not state.get('created_at') or str(row['created_at']) < str(state['created_at'])
+            ):
+                state['created_at'] = row['created_at']
+            if row.get('created_at') and (
+                not state.get('updated_at') or str(row['created_at']) > str(state['updated_at'])
+            ):
+                state['updated_at'] = row['created_at']
+
+            feedback_type = (row.get('feedback_type') or '').lower()
+            if feedback_type == 'watched':
+                state['watched'] = 1
+            elif feedback_type in ('liked', 'like'):
+                state['watched'] = 1
+                state['feedback'] = 'like'
+            elif feedback_type in ('disliked', 'dislike'):
+                state['watched'] = 1
+                state['feedback'] = 'dislike'
+            elif feedback_type in ('ignored', 'ignore'):
+                state['excluded'] = 1
+
+        cursor.executemany("""
+            INSERT INTO user_content_feedback
+                (user_id, content_id, content_type, title, watched, feedback, excluded,
+                 tmdb_id, tvdb_id, created_at, updated_at)
+            VALUES
+                (:user_id, :content_id, :content_type, :title, :watched, :feedback, :excluded,
+                 :tmdb_id, :tvdb_id, :created_at, :updated_at)
+        """, list(migrated.values()))
+        cursor.execute("DROP TABLE user_content_feedback_legacy")
+
+    @staticmethod
+    def normalize_content_id(content_type: str, content_id: str, title: str) -> str:
+        """Use provider IDs when available, otherwise derive a stable title key."""
+        raw_id = str(content_id or '').strip()
+        if raw_id and raw_id != '0':
+            return raw_id
+        title_key = " ".join(str(title or 'unknown').split()).lower()
+        return f"{content_type}:title:{title_key}"
+
+    @staticmethod
+    def _feedback_where_clause(feedback_type: FeedbackType) -> str:
+        """Translate legacy feedback filters into normalized column predicates."""
+        normalized = feedback_type.lower()
+        if normalized == 'watched':
+            return "watched = 1"
+        if normalized in ('liked', 'like'):
+            return "feedback = 'like'"
+        if normalized in ('disliked', 'dislike'):
+            return "feedback = 'dislike'"
+        if normalized in ('ignored', 'ignore'):
+            return "excluded = 1"
+        raise ValueError(f"Unsupported feedback type: {feedback_type}")
+
+    @staticmethod
+    def _normalize_feedback_value(feedback: Optional[str]) -> Optional[FeedbackValue]:
+        """Normalize public feedback aliases to the stored like/dislike values."""
+        if feedback is None:
+            return None
+        normalized = feedback.lower()
+        if normalized in ('liked', 'like'):
+            return 'like'
+        if normalized in ('disliked', 'dislike'):
+            return 'dislike'
+        raise ValueError(f"Unsupported feedback value: {feedback}")
+
+    @staticmethod
+    def _row_to_feedback_state(row: Optional[sqlite3.Row]) -> dict:
+        """Convert a feedback row into the shape used by callbacks and admin APIs."""
+        if not row:
+            return {'watched': False, 'feedback': None, 'excluded': False}
+        data = dict(row)
+        data['watched'] = bool(data.get('watched'))
+        data['excluded'] = bool(data.get('excluded'))
+        return data
+
+    def get_content_feedback_state(self, user_id: int, content_id: str) -> dict:
+        """Return watched/feedback/excluded state for a single content item."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM user_content_feedback
+            WHERE user_id = ? AND content_id = ?
+        """, (user_id, content_id))
+        row = cursor.fetchone()
+        conn.close()
+        return self._row_to_feedback_state(row)
+
+    def set_feedback_state(
+        self,
+        user_id: int,
+        content_id: str,
+        content_type: str,
+        title: str,
+        watched: bool = False,
+        feedback: Optional[str] = None,
+        excluded: bool = False,
+        tmdb_id: str = None,
+        tvdb_id: str = None,
+    ) -> dict:
+        """Set the full feedback state for content and return the stored state."""
+        content_id = self.normalize_content_id(content_type, content_id, title)
+        feedback_value = self._normalize_feedback_value(feedback)
+        now = datetime.now()
+        current = self.get_content_feedback_state(user_id, content_id)
+        created_at = current.get('created_at') or now
+        stored_title = title or current.get('title')
+        stored_content_type = content_type or current.get('content_type')
+        stored_tmdb_id = tmdb_id if tmdb_id is not None else current.get('tmdb_id')
+        stored_tvdb_id = tvdb_id if tvdb_id is not None else current.get('tvdb_id')
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO user_content_feedback
+                (user_id, content_id, content_type, title, watched, feedback, excluded,
+                 tmdb_id, tvdb_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            content_id,
+            stored_content_type,
+            stored_title,
+            1 if watched else 0,
+            feedback_value,
+            1 if excluded else 0,
+            stored_tmdb_id,
+            stored_tvdb_id,
+            created_at,
+            now,
+        ))
+        conn.commit()
+        conn.close()
+        logger.info(
+            "Set feedback state for user %s, content %s: watched=%s feedback=%s excluded=%s",
+            user_id,
+            content_id,
+            watched,
+            feedback_value,
+            excluded,
+        )
+        return self.get_content_feedback_state(user_id, content_id)
+
+    def toggle_feedback_state(
+        self,
+        user_id: int,
+        content_id: str,
+        content_type: str,
+        title: str,
+        action: str,
+        tmdb_id: str = None,
+        tvdb_id: str = None,
+    ) -> dict:
+        """Toggle one carousel feedback action and return the updated state."""
+        content_id = self.normalize_content_id(content_type, content_id, title)
+        current = self.get_content_feedback_state(user_id, content_id)
+        watched = bool(current.get('watched'))
+        feedback = current.get('feedback')
+        excluded = bool(current.get('excluded'))
+        normalized = action.lower()
+
+        if normalized == 'ignore':
+            excluded = not excluded
+        elif normalized == 'watched':
+            if watched and feedback is None:
+                watched = False
+            else:
+                watched = True
+                feedback = None
+        elif normalized in ('liked', 'like'):
+            if watched and feedback == 'like':
+                watched = False
+                feedback = None
+            else:
+                watched = True
+                feedback = 'like'
+        elif normalized in ('disliked', 'dislike'):
+            if watched and feedback == 'dislike':
+                watched = False
+                feedback = None
+            else:
+                watched = True
+                feedback = 'dislike'
+        else:
+            raise ValueError(f"Unsupported feedback action: {action}")
+
+        return self.set_feedback_state(
+            user_id=user_id,
+            content_id=content_id,
+            content_type=content_type,
+            title=title,
+            watched=watched,
+            feedback=feedback,
+            excluded=excluded,
+            tmdb_id=tmdb_id,
+            tvdb_id=tvdb_id,
+        )
+
     def add_feedback(
         self,
         user_id: int,
@@ -101,19 +375,38 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         tmdb_id: str = None,
         tvdb_id: str = None
     ):
-        """Add or update user feedback for content"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """Add feedback using legacy action names."""
+        content_id = self.normalize_content_id(content_type, content_id, title)
+        current = self.get_content_feedback_state(user_id, content_id)
+        watched = bool(current.get('watched'))
+        feedback = current.get('feedback')
+        excluded = bool(current.get('excluded'))
+        normalized = feedback_type.lower()
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO user_content_feedback
-            (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, content_id, content_type, title, feedback_type, tmdb_id, tvdb_id, datetime.now()))
+        if normalized == 'watched':
+            watched = True
+        elif normalized in ('liked', 'like'):
+            watched = True
+            feedback = 'like'
+        elif normalized in ('disliked', 'dislike'):
+            watched = True
+            feedback = 'dislike'
+        elif normalized in ('ignored', 'ignore'):
+            excluded = True
+        else:
+            raise ValueError(f"Unsupported feedback type: {feedback_type}")
 
-        conn.commit()
-        conn.close()
-        logger.info(f"Added {feedback_type} feedback for user {user_id}, content {content_id}")
+        return self.set_feedback_state(
+            user_id=user_id,
+            content_id=content_id,
+            content_type=content_type,
+            title=title,
+            watched=watched,
+            feedback=feedback,
+            excluded=excluded,
+            tmdb_id=tmdb_id,
+            tvdb_id=tvdb_id,
+        )
 
     def get_user_feedback(
         self,
@@ -126,14 +419,17 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         cursor = conn.cursor()
 
         if feedback_type:
+            predicate = self._feedback_where_clause(feedback_type)
             cursor.execute("""
                 SELECT * FROM user_content_feedback
-                WHERE user_id = ? AND feedback_type = ?
-            """, (user_id, feedback_type))
+                WHERE user_id = ? AND """ + predicate + """
+                ORDER BY updated_at DESC
+            """, (user_id,))
         else:
             cursor.execute("""
                 SELECT * FROM user_content_feedback
                 WHERE user_id = ?
+                ORDER BY updated_at DESC
             """, (user_id,))
 
         rows = cursor.fetchall()
@@ -148,7 +444,8 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
 
         cursor.execute("""
             SELECT DISTINCT content_id FROM user_content_feedback
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
+            WHERE user_id = ?
+              AND (watched = 1 OR feedback = 'dislike' OR excluded = 1)
         """, (user_id,))
 
         rows = cursor.fetchall()
@@ -163,7 +460,8 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
 
         cursor.execute("""
             SELECT DISTINCT title FROM user_content_feedback
-            WHERE user_id = ? AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
+            WHERE user_id = ?
+              AND (watched = 1 OR feedback = 'dislike' OR excluded = 1)
         """, (user_id,))
 
         rows = cursor.fetchall()
@@ -180,7 +478,7 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
             SELECT DISTINCT tmdb_id FROM user_content_feedback
             WHERE user_id = ?
               AND tmdb_id IS NOT NULL
-              AND feedback_type IN ('watched', 'disliked', 'ignored', 'dislike', 'ignore')
+              AND (watched = 1 OR feedback = 'dislike' OR excluded = 1)
         """, (user_id,))
 
         rows = cursor.fetchall()
@@ -193,11 +491,12 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        predicate = self._feedback_where_clause(feedback_type)
         cursor.execute("""
             SELECT title FROM user_content_feedback
-            WHERE user_id = ? AND feedback_type = ?
-            ORDER BY created_at DESC
-        """, (user_id, feedback_type))
+            WHERE user_id = ? AND """ + predicate + """
+            ORDER BY updated_at DESC
+        """, (user_id,))
 
         rows = cursor.fetchall()
         conn.close()
@@ -214,10 +513,11 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
+        predicate = self._feedback_where_clause(feedback_type)
         cursor.execute("""
             SELECT 1 FROM user_content_feedback
-            WHERE user_id = ? AND content_id = ? AND feedback_type = ?
-        """, (user_id, content_id, feedback_type))
+            WHERE user_id = ? AND content_id = ? AND """ + predicate + """
+        """, (user_id, content_id))
 
         result = cursor.fetchone()
         conn.close()
@@ -336,13 +636,13 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
             cursor.execute("""
                 SELECT * FROM user_content_feedback
                 WHERE user_id = ?
-                ORDER BY created_at DESC
+                ORDER BY updated_at DESC
                 LIMIT ?
             """, (user_id, limit))
         else:
             cursor.execute("""
                 SELECT * FROM user_content_feedback
-                ORDER BY created_at DESC
+                ORDER BY updated_at DESC
                 LIMIT ?
             """, (limit,))
 
@@ -362,7 +662,9 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
                 f.title,
                 f.content_type as media_type,
                 r.status as request_status,
-                f.feedback_type,
+                f.watched,
+                f.feedback,
+                f.excluded,
                 COALESCE(f.tmdb_id, r.tmdb_id) as tmdb_id,
                 COALESCE(f.tvdb_id, r.tvdb_id) as tvdb_id,
                 f.created_at
@@ -377,7 +679,9 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
                 r2.title,
                 r2.media_type,
                 r2.status as request_status,
-                NULL as feedback_type,
+                0 as watched,
+                NULL as feedback,
+                0 as excluded,
                 r2.tmdb_id,
                 r2.tvdb_id,
                 r2.created_at

@@ -34,12 +34,12 @@ def clear_catalog_cache():
     load_catalog.cache_clear()
 
 
-def test_english_shared_keys_have_three_variants():
+def test_english_shared_keys_have_one_variant():
     catalog = _en_catalog()
     for key in _shared_keys(catalog):
         variants = catalog["shared"][key]
         assert isinstance(variants, list), key
-        assert len(variants) >= 3, key
+        assert len(variants) == 1, key
 
 
 def test_english_thinking_styles_have_three_variants():
@@ -67,7 +67,7 @@ def test_recommend_button_resolves_for_all_languages():
         text = get_phrase(prefs, phrase_keys.RECOMMEND_BUTTON)
         assert text
         variants = resolve_variants(lang, "default", phrase_keys.RECOMMEND_BUTTON)
-        assert len(variants) >= 3, lang
+        assert len(variants) >= 1, lang
         assert text in variants
 
 
@@ -97,7 +97,7 @@ def test_missing_lang_key_falls_back_to_english_for_non_thinking():
 
 def test_random_variant_selection():
     prefs = {"language": "en", "bot_style": "default"}
-    seen = {get_phrase(prefs, phrase_keys.WELCOME) for _ in range(30)}
+    seen = {get_phrase(prefs, phrase_keys.THINKING) for _ in range(30)}
     assert len(seen) >= 2
 
 

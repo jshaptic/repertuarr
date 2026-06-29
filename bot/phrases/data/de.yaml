@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Empfiehl mir etwas
-  - Schlag mir etwas zum Anschauen vor
-  - Finde mir etwas Gutes
   download_ready:
   - 🎉 *{title}* ist bereit\! [{play_label}]({url})
-  - 🎉 *{title}* ist bereit — [{play_label}]({url})
-  - '🎉 Gute Nachricht: *{title}* ist bereit\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* wurde heruntergeladen!
-  - 🎉 *{title}* ist fertig heruntergeladen!
-  - '🎉 Download abgeschlossen: *{title}*!'
   play_button:
   - ▶️ Auf Jellyfin ansehen
-  - ▶️ Auf Jellyfin schauen
-  - ▶️ In Jellyfin öffnen

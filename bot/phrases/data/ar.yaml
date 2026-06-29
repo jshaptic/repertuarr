@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - اقترح علي شيئًا
-  - اقترح شيئًا للمشاهدة
-  - جد لي شيئًا جيدًا
   download_ready:
   - 🎉 *{title}* جاهز\! [{play_label}]({url})
-  - 🎉 *{title}* جاهز — [{play_label}]({url})
-  - '🎉 أخبار سارة: *{title}* جاهز\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 تم تحميل *{title}*!
-  - 🎉 اكتمل تحميل *{title}*!
-  - '🎉 اكتمل التنزيل: *{title}*!'
   play_button:
   - ▶️ شاهد على Jellyfin
-  - ▶️ شغّل على Jellyfin
-  - ▶️ افتح في Jellyfin

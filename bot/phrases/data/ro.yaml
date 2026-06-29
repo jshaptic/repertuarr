@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Recomandă-mi ceva
-  - Sugerează ceva de vizionat
-  - Găsește-mi ceva bun
   download_ready:
   - 🎉 *{title}* este gata\! [{play_label}]({url})
-  - 🎉 *{title}* este gata — [{play_label}]({url})
-  - '🎉 Vești bune: *{title}* este gata\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* a fost descărcat!
-  - 🎉 *{title}* s-a terminat de descărcat!
-  - '🎉 Descărcare finalizată: *{title}*!'
   play_button:
   - ▶️ Vizionează pe Jellyfin
-  - ▶️ Redă pe Jellyfin
-  - ▶️ Deschide în Jellyfin

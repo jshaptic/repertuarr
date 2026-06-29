@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Anbefal meg noe
-  - Foreslå noe å se
-  - Finn noe bra til meg
   download_ready:
   - 🎉 *{title}* er klar\! [{play_label}]({url})
-  - 🎉 *{title}* er klar — [{play_label}]({url})
-  - '🎉 Gode nyheter: *{title}* er klar\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* er lastet ned!
-  - 🎉 *{title}* er ferdig nedlastet!
-  - '🎉 Nedlasting fullført: *{title}*!'
   play_button:
   - ▶️ Se på Jellyfin
-  - ▶️ Spill av på Jellyfin
-  - ▶️ Åpne i Jellyfin

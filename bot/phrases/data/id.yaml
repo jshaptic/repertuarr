@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Rekomendasikan sesuatu
-  - Sarankan sesuatu untuk ditonton
-  - Cari sesuatu yang bagus
   download_ready:
   - 🎉 *{title}* sudah siap\! [{play_label}]({url})
-  - 🎉 *{title}* sudah siap — [{play_label}]({url})
-  - '🎉 Kabar baik: *{title}* sudah siap\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* sudah diunduh!
-  - 🎉 *{title}* selesai diunduh!
-  - '🎉 Unduhan selesai: *{title}*!'
   play_button:
   - ▶️ Tonton di Jellyfin
-  - ▶️ Putar di Jellyfin
-  - ▶️ Buka di Jellyfin

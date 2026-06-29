@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Порекомендуй щось
-  - Запропонуй щось подивитися
-  - Знайди мені щось гарне
   download_ready:
   - 🎉 *{title}* готовий\! [{play_label}]({url})
-  - 🎉 *{title}* готовий — [{play_label}]({url})
-  - '🎉 Чудові новини: *{title}* готовий\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* завантажено!
-  - 🎉 *{title}* завантажився!
-  - '🎉 Завантаження завершено: *{title}*!'
   play_button:
   - ▶️ Дивитись у Jellyfin
-  - ▶️ Відкрити в Jellyfin
-  - ▶️ Запустити в Jellyfin

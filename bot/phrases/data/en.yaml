@@ -1,176 +1,101 @@
 styles:
   default:
     thinking:
-      - "Let me think of something good..."
-      - "Hmm, let me find something worth your time..."
-      - "One moment — picking something special..."
+    - Let me think of something good...
+    - Hmm, let me find something worth your time...
+    - One moment — picking something special...
   casual:
     thinking:
-      - "Hang on, I'll dig up something cool..."
-      - "Give me a sec — something good is coming..."
-      - "Okay okay, let me find you a winner..."
+    - Hang on, I'll dig up something cool...
+    - Give me a sec — something good is coming...
+    - Okay okay, let me find you a winner...
   warm:
     thinking:
-      - "Let me find something you'll really enjoy..."
-      - "I'll pick something cozy and good for you..."
-      - "Give me a moment — I want this to be a great pick..."
+    - Let me find something you'll really enjoy...
+    - I'll pick something cozy and good for you...
+    - Give me a moment — I want this to be a great pick...
   witty:
     thinking:
-      - "Consulting my very scientific taste algorithm..."
-      - "Rolling the recommendation dice — metaphorically..."
-      - "Let me raid the good-stuff vault for you..."
+    - Consulting my very scientific taste algorithm...
+    - Rolling the recommendation dice — metaphorically...
+    - Let me raid the good-stuff vault for you...
   cinephile:
     thinking:
-      - "Curating a shortlist from the good shelves..."
-      - "Let me browse the catalogue for something worthy..."
-      - "One moment — selecting from the finer picks..."
-
+    - Curating a shortlist from the good shelves...
+    - Let me browse the catalogue for something worthy...
+    - One moment — selecting from the finer picks...
 shared:
   recommend_button:
-    - "Recommend me something"
-    - "Suggest something to watch"
-    - "Find me something good"
+  - Recommend me something
   welcome:
-    - "🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!"
-    - "🎬 Hey! I'm your media bot. Try /status or ask me to add or recommend something."
-    - "🎬 Ready when you are. /status for services, or tell me what you want to watch."
+  - 🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!
   unknown_intent:
-    - "🤔 I'm not sure what you want."
-    - "🤔 Hmm, I didn't quite catch that."
-    - "🤔 Not sure I understood — try asking differently?"
+  - 🤔 I'm not sure what you want.
   request_error:
-    - "❌ Something went wrong processing your request."
-    - "❌ That didn't work — something went wrong on my side."
-    - "❌ Oops, I hit an error handling that request."
+  - ❌ Something went wrong processing your request.
   llm_not_configured:
-    - "⚠️ LLM not configured. Cannot process request."
-    - "⚠️ I can't process that — the AI isn't configured."
-    - "⚠️ No LLM configured, so I can't handle this yet."
+  - ⚠️ LLM not configured. Cannot process request.
   inquiry_error:
-    - "❌ Error generating response."
-    - "❌ I couldn't put together an answer."
-    - "❌ Something went wrong while answering that."
+  - ❌ Error generating response.
   recommend_failed:
-    - "❌ Couldn't generate recommendations."
-    - "❌ I couldn't come up with recommendations this time."
-    - "❌ No recommendations available right now."
+  - ❌ Couldn't generate recommendations.
   recommend_error:
-    - "❌ Error generating recommendations."
-    - "❌ Something broke while making recommendations."
-    - "❌ I hit an error while recommending."
+  - ❌ Error generating recommendations.
   add_media_no_title:
-    - "❓ I understood you want to add media, but I couldn't figure out the title."
-    - "❓ You want to add something — which title should I look for?"
-    - "❓ I got the add request, but I need the title."
+  - ❓ I understood you want to add media, but I couldn't figure out the title.
   no_radarr:
-    - "⚠️ No Radarr instance configured for your account."
-    - "⚠️ Radarr isn't set up for your account."
-    - "⚠️ I can't add movies — no Radarr configured."
+  - ⚠️ No Radarr instance configured for your account.
   no_sonarr:
-    - "⚠️ No Sonarr instance configured for your account."
-    - "⚠️ Sonarr isn't set up for your account."
-    - "⚠️ I can't add series — no Sonarr configured."
+  - ⚠️ No Sonarr instance configured for your account.
   ambiguous_media_type:
-    - "❓ Ambiguous media type for '{title}'."
-    - "❓ Is '{title}' a movie or a series?"
-    - "❓ Not sure if '{title}' is a movie or show."
+  - ❓ Ambiguous media type for '{title}'.
   no_search_results:
-    - "❌ No results found for '{title}' on {type} DB."
-    - "❌ Couldn't find '{title}' in {type}."
-    - "❌ Nothing turned up for '{title}' on {type}."
+  - ❌ No results found for '{title}' on {type} DB.
   no_released_media:
-    - "❌ No released media found for '**{title}**'."
-    - "❌ '{title}' looks unreleased or upcoming."
-    - "❌ I only found unreleased entries for '{title}'."
+  - ❌ No released media found for '**{title}**'.
   arr_error:
-    - "❌ Error communicating with {type}."
-    - "❌ Couldn't reach {type} right now."
-    - "❌ {type} didn't respond properly."
+  - ❌ Error communicating with {type}.
   carousel_footer:
-    - "(Result {idx}/{total})"
-    - "({idx} of {total})"
-    - "[{idx}/{total}]"
+  - "({idx} of {total})"
   play_button:
-    - "▶️ Play on Jellyfin"
-    - "▶️ Watch on Jellyfin"
-    - "▶️ Open in Jellyfin"
+  - ▶️ Play on Jellyfin
   inline_add:
-    - "➕ Add"
-    - "➕ Add to library"
-    - "➕ Request"
+  - Add to library
   inline_added:
-    - "✅ Added"
-    - "✅ In library"
-    - "✅ Already added"
+  - ✅ Added
   inline_downloading:
-    - "⏳ Downloading"
-    - "⏳ Fetching"
-    - "⏳ On the way"
+  - ⏳ Downloading
   carousel_expired:
-    - "This carousel has expired."
-    - "This carousel is no longer available."
-    - "That carousel expired."
+  - This carousel has expired.
   unauthorized:
-    - "Unauthorized"
-    - "Not authorized"
-    - "Access denied"
+  - Unauthorized
   feedback_watched:
-    - "✅ Marked as watched"
-    - "✅ Saved as watched"
-    - "✅ Got it — watched"
+  - ✅ Marked as watched
   feedback_disliked:
-    - "✅ Marked as disliked"
-    - "✅ Saved as disliked"
-    - "✅ Got it — disliked"
+  - ✅ Marked as disliked
   feedback_ignored:
-    - "✅ Ignored"
-    - "✅ Hidden from suggestions"
-    - "✅ Won't suggest again"
+  - ✅ Ignored
   adding_to_library:
-    - "Adding to library..."
-    - "Sending the request..."
-    - "Adding now..."
+  - Adding to library...
   add_not_found:
-    - "❌ **Error: Item not found during add.**"
-    - "❌ **Couldn't find that item to add.**"
-    - "❌ **Add failed — item not found.**"
+  - '❌ **Error: Item not found during add.**'
   already_in_library:
-    - "⚠️ **Already in library!**"
-    - "⚠️ **That's already in your library.**"
-    - "⚠️ **Already added.**"
+  - ⚠️ **Already in library!**
   add_failed:
-    - "❌ **Failed to add.**"
-    - "❌ **Couldn't add that title.**"
-    - "❌ **Add request failed.**"
+  - ❌ **Failed to add.**
   add_error:
-    - "❌ **Error occurred.**"
-    - "❌ **Something went wrong while adding.**"
-    - "❌ **Add error.**"
+  - ❌ **Error occurred.**
   status_sonarr_online:
-    - "✅ Sonarr: Online"
-    - "✅ Sonarr is up"
-    - "✅ Sonarr: all good"
+  - '✅ Sonarr: Online'
   status_sonarr_error:
-    - "⚠️ Sonarr: Error {status_code}"
-    - "⚠️ Sonarr returned error {status_code}"
-    - "⚠️ Sonarr problem: HTTP {status_code}"
+  - '⚠️ Sonarr: Error {status_code}'
   status_sonarr_unreachable:
-    - "❌ Sonarr: Unreachable ({error})"
-    - "❌ Can't reach Sonarr ({error})"
-    - "❌ Sonarr is down ({error})"
+  - '❌ Sonarr: Unreachable ({error})'
   status_sonarr_not_configured:
-    - "ℹ️ Sonarr: Not configured"
-    - "ℹ️ Sonarr isn't configured"
-    - "ℹ️ No Sonarr setup found"
+  - 'ℹ️ Sonarr: Not configured'
   clear_chat:
-    - "🧹 Cleared {removed} stored messages. Starting fresh."
-    - "🧹 Wiped {removed} messages. Clean slate."
-    - "🧹 Removed {removed} messages. Fresh start."
+  - 🧹 Cleared {removed} stored messages. Starting fresh.
   download_ready:
-    - "🎉 *{title}* is ready to watch\\! [{play_label}]({url})"
-    - "🎉 *{title}* is ready — [{play_label}]({url})"
-    - "🎉 Good news: *{title}* is ready\\! [{play_label}]({url})"
+  - 🎉 *{title}* is ready to watch\! [{play_label}]({url})
   download_ready_no_url:
-    - "🎉 *{title}* has been downloaded!"
-    - "🎉 *{title}* finished downloading!"
-    - "🎉 Download complete: *{title}*!"
+  - 🎉 *{title}* has been downloaded!

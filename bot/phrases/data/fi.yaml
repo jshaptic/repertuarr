@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Suosittele mulle jotain
-  - Ehdota jotain katsottavaa
-  - Löydä mulle jotain hyvää
   download_ready:
   - 🎉 *{title}* on valmis\! [{play_label}]({url})
-  - 🎉 *{title}* on valmis — [{play_label}]({url})
-  - '🎉 Hyviä uutisia: *{title}* on valmis\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* on ladattu!
-  - 🎉 *{title}* latautui valmiiksi!
-  - '🎉 Lataus valmis: *{title}*!'
   play_button:
   - ▶️ Katso Jellyfinissä
-  - ▶️ Avaa Jellyfinissä
-  - ▶️ Toista Jellyfinissä

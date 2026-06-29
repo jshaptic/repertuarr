@@ -27,17 +27,13 @@ styles:
 shared:
   recommend_button:
   - Порекомендуй что-нибудь
-  - Предложи что посмотреть
-  - Найди мне что-нибудь хорошее
+  carousel_footer:
+  - "({idx} из {total})"
+  inline_add:
+  - Добавить в библиотеку
   download_ready:
-  - 🎉 *{title}* готов\! [{play_label}]({url})
-  - 🎉 *{title}* готов — [{play_label}]({url})
-  - '🎉 Отличные новости: *{title}* готов\! [{play_label}]({url})'
+  - 🎉 *{title}* готов к просмотру! [{play_label}]({url})
   download_ready_no_url:
-  - 🎉 *{title}* загружен!
   - 🎉 *{title}* скачался!
-  - '🎉 Загрузка завершена: *{title}*!'
   play_button:
   - ▶️ Смотреть в Jellyfin
-  - ▶️ Открыть в Jellyfin
-  - ▶️ Запустить в Jellyfin

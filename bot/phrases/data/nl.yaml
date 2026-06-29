@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Beveel me iets aan
-  - Stel iets voor om te kijken
-  - Vind iets goeds voor me
   download_ready:
   - 🎉 *{title}* is klaar\! [{play_label}]({url})
-  - 🎉 *{title}* is klaar — [{play_label}]({url})
-  - '🎉 Goed nieuws: *{title}* is klaar\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* is gedownload!
-  - 🎉 *{title}* is klaar met downloaden!
-  - '🎉 Download voltooid: *{title}*!'
   play_button:
   - ▶️ Bekijk op Jellyfin
-  - ▶️ Kijk op Jellyfin
-  - ▶️ Open in Jellyfin

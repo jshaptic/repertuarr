@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - Ajánlj valamit
-  - Javasolj valamit nézésre
-  - Találj valami jót
   download_ready:
   - 🎉 *{title}* kész\! [{play_label}]({url})
-  - 🎉 *{title}* kész — [{play_label}]({url})
-  - '🎉 Jó hír: *{title}* kész\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* letöltve!
-  - 🎉 *{title}* befejezte a letöltést!
-  - '🎉 Letöltés kész: *{title}*!'
   play_button:
   - ▶️ Nézd meg a Jellyfin-en
-  - ▶️ Lejátszás Jellyfinen
-  - ▶️ Megnyitás Jellyfinben

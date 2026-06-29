@@ -27,17 +27,9 @@ styles:
 shared:
   recommend_button:
   - המלץ לי על משהו
-  - הצע משהו לצפייה
-  - מצא לי משהו טוב
   download_ready:
   - 🎉 *{title}* מוכן\! [{play_label}]({url})
-  - 🎉 *{title}* מוכן — [{play_label}]({url})
-  - '🎉 חדשות טובות: *{title}* מוכן\! [{play_label}]({url})'
   download_ready_no_url:
   - 🎉 *{title}* הורד!
-  - 🎉 *{title}* סיים להוריד!
-  - '🎉 ההורדה הושלמה: *{title}*!'
   play_button:
   - ▶️ צפה ב-Jellyfin
-  - ▶️ הפעל ב-Jellyfin
-  - ▶️ פתח ב-Jellyfin
