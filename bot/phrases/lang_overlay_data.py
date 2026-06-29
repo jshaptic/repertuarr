@@ -1261,4 +1261,417 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# New styles and expanded Russian thinking variants (merged at import time).
+_STYLE_EXTENSIONS: Dict[str, Dict[str, Any]] = {
+    "es": {
+        "sarcastic": {"thinking": [
+            "Claro, dejo todo y te busco algo perfecto...",
+            "Porque obviamente no tenía nada mejor que hacer...",
+            "Vale. Fingiré que esto es un reto fascinante...",
+        ]},
+        "wizarding": {"thinking": [
+            "Revisando la Sección Restringida en busca de algo bueno...",
+            "Consultando el Sombrero Seleccionador sobre tu gusto...",
+            "Preparando una poción de recomendaciones — casi lista...",
+        ]},
+    },
+    "fr": {
+        "sarcastic": {"thinking": [
+            "Bien sûr, je lâche tout pour te trouver le film parfait...",
+            "Parce qu'évidemment je n'avais rien de mieux à faire...",
+            "D'accord. Je vais faire comme si c'était passionnant...",
+        ]},
+        "wizarding": {"thinking": [
+            "Je fouille la Section interdite pour quelque chose de bon...",
+            "Je consulte le Choixpeau sur tes goûts...",
+            "Je prépare une potion de recommandations — presque prête...",
+        ]},
+    },
+    "de": {
+        "sarcastic": {"thinking": [
+            "Na klar, ich lass alles liegen und such dir was Perfektes...",
+            "Weil ich offensichtlich nichts Besseres zu tun hatte...",
+            "Schön. Ich tu so, als wäre das eine spannende Aufgabe...",
+        ]},
+        "wizarding": {"thinking": [
+            "Durchstöbere den verbotenen Abteil nach etwas Gutem...",
+            "Frage den Sprechenden Hut nach deinem Geschmack...",
+            "Braue einen Empfehlungstrank — gleich fertig...",
+        ]},
+    },
+    "it": {
+        "sarcastic": {"thinking": [
+            "Certo, mollo tutto e ti trovo qualcosa di perfetto...",
+            "Perché ovviamente non avevo di meglio da fare...",
+            "Va bene. Fingirò che sia una sfida avvincente...",
+        ]},
+        "wizarding": {"thinking": [
+            "Controllo la Sezione Proibita per qualcosa di buono...",
+            "Consulto il Cappello Parlante sui tuoi gusti...",
+            "Preparo una pozione di raccomandazioni — quasi pronta...",
+        ]},
+    },
+    "pt": {
+        "sarcastic": {"thinking": [
+            "Claro, largo tudo e acho algo perfeito para ti...",
+            "Porque obviamente não tinha nada melhor para fazer...",
+            "Está bem. Vou fingir que isto é um desafio fascinante...",
+        ]},
+        "wizarding": {"thinking": [
+            "A verificar a Secção Reservada por algo bom...",
+            "A consultar o Chapéu Seletor sobre o teu gosto...",
+            "A preparar uma poção de recomendações — quase pronta...",
+        ]},
+    },
+    "ja": {
+        "sarcastic": {"thinking": [
+            "はいはい、全部放り出して完璧なもの探しますよ...",
+            "もちろん他にやることがなかったわけじゃないですけど...",
+            "わかった。超面白い課題だと思い込みます...",
+        ]},
+        "wizarding": {"thinking": [
+            "禁書区からいいものを探してる...",
+            "組分け帽に好みを相談中...",
+            "おすすめポーションを調合中 — もう少し...",
+        ]},
+    },
+    "zh": {
+        "sarcastic": {"thinking": [
+            "当然，我这就放下一切给你找完美的...",
+            "显然我闲着没事干...",
+            "好吧，我假装这是个有趣的挑战...",
+        ]},
+        "wizarding": {"thinking": [
+            "正在禁书区找值得看的内容...",
+            "正在向分院帽咨询你的口味...",
+            "正在调制推荐魔药 — 快好了...",
+        ]},
+    },
+    "ko": {
+        "sarcastic": {"thinking": [
+            "물론이죠, 모든 걸 내려놓고 완벽한 걸 찾아볼게요...",
+            "당연히 할 일이 없었던 건 아니지만요...",
+            "알겠어요. 재미있는 도전인 척할게요...",
+        ]},
+        "wizarding": {"thinking": [
+            "금서 구역에서 볼 만한 걸 찾는 중...",
+            "기숙 배정 모자에게 취향을 물어보는 중...",
+            "추천 물약을 만드는 중 — 거의 다 됐어요...",
+        ]},
+    },
+    "ar": {
+        "sarcastic": {"thinking": [
+            "بالطبع، سأترك كل شيء وأجد لك شيئًا مثاليًا...",
+            "لأنه من الواضح أنني لم يكن لدي ما أفعله...",
+            "حسنًا. سأتظاهر أن هذا تحدٍ مثير...",
+        ]},
+        "wizarding": {"thinking": [
+            "أتفقد القسم المحظور بحثًا عن شيء جيد...",
+            "أستشير قبعة التنسيق حول ذوقك...",
+            "أحضّر جرعة توصيات — تقريبًا جاهزة...",
+        ]},
+    },
+    "hi": {
+        "sarcastic": {"thinking": [
+            "हाँ हाँ, सब छोड़कर perfect चीज़ ढूँढता हूँ...",
+            "क्योंकि obviously मेरे पास और कुछ था ही नहीं...",
+            "ठीक है, मान लेता हूँ ये दिलचस्प चुनौती है...",
+        ]},
+        "wizarding": {"thinking": [
+            "प्रतिबंधित अनुभाग में कुछ अच्छा ढूँढ रहा हूँ...",
+            "सॉर्टिंग हैट से तुम्हारी पसंद पूछ रहा हूँ...",
+            "सिफ़ारिश का पोशन तैयार कर रहा हूँ — लगभग तैयार...",
+        ]},
+    },
+    "tr": {
+        "sarcastic": {"thinking": [
+            "Tabii, her şeyi bırakıp mükemmel bir şey bulayım...",
+            "Çünkü belli ki yapacak daha iyi bir işim yoktu...",
+            "Peki. Bunun heyecan verici bir görev olduğuna inanalım...",
+        ]},
+        "wizarding": {"thinking": [
+            "Yasak bölümde izlemeye değer bir şey arıyorum...",
+            "Seçmen Şapka'ya zevkini danışıyorum...",
+            "Öneri iksiri hazırlıyorum — neredeyse bitti...",
+        ]},
+    },
+    "pl": {
+        "sarcastic": {"thinking": [
+            "Jasne, rzucam wszystko i znajdę coś idealnego...",
+            "Bo oczywiście nie miałem nic lepszego do roboty...",
+            "Dobra. Udawajmy, że to fascynujące wyzwanie...",
+        ]},
+        "wizarding": {"thinking": [
+            "Przeszukuję dział z książkami zakazanymi...",
+            "Konsultuję się z Sortującym Kapeluszem...",
+            "Warzę miksturę rekomendacji — prawie gotowa...",
+        ]},
+    },
+    "nl": {
+        "sarcastic": {"thinking": [
+            "Tuurlijk, ik laat alles liggen en zoek iets perfects...",
+            "Want ik had natuurlijk niets beters te doen...",
+            "Prima. Ik doe alsof dit een fascinerende uitdaging is...",
+        ]},
+        "wizarding": {"thinking": [
+            "Even in de verboden afdeling snuffelen...",
+            "Overleg met de Sorteerhoed over je smaak...",
+            "Aanbevelingsdrankje aan het brouwen — bijna klaar...",
+        ]},
+    },
+    "sv": {
+        "sarcastic": {"thinking": [
+            "Visst, jag släpper allt och hittar något perfekt...",
+            "För jag hade uppenbarligen inget bättre för mig...",
+            "Okej. Jag låtsas att det här är en fascinerande utmaning...",
+        ]},
+        "wizarding": {"thinking": [
+            "Kollar i den förbjudna avdelningen efter något bra...",
+            "Rådfrågar sorteringshatten om din smak...",
+            "Brygger en rekommendationsdryck — nästan klar...",
+        ]},
+    },
+    "da": {
+        "sarcastic": {"thinking": [
+            "Selvfølgelig, jeg dropper alt og finder noget perfekt...",
+            "Fordi jeg åbenbart ikke havde bedre at tage mig til...",
+            "Fint. Jeg lader som om det er en fascinerende opgave...",
+        ]},
+        "wizarding": {"thinking": [
+            "Kigger i den forbudte afdeling efter noget godt...",
+            "Spørger sorteringshatten om din smag...",
+            "Brygger en anbefalings-eliksir — næsten klar...",
+        ]},
+    },
+    "no": {
+        "sarcastic": {"thinking": [
+            "Jada, jeg dropper alt og finner noe perfekt...",
+            "For jeg hadde åpenbart ingenting bedre å gjøre...",
+            "Greit. Jeg later som dette er en fascinerende oppgave...",
+        ]},
+        "wizarding": {"thinking": [
+            "Sjekker den forbudte avdelingen etter noe bra...",
+            "Rådfører meg med sorteringshatten om smaken din...",
+            "Brygger en anbefalings-eliksir — nesten ferdig...",
+        ]},
+    },
+    "fi": {
+        "sarcastic": {"thinking": [
+            "Totta kai, jätän kaiken ja etsin jotain täydellistä...",
+            "Koska minulla ilmeisesti ei ollut parempaakaan tekemistä...",
+            "Selvä. Teeskentelen, että tämä on kiehtova haaste...",
+        ]},
+        "wizarding": {"thinking": [
+            "Selaan kiellettyä osastoa hyvän löytämiseksi...",
+            "Kysyn lajitteluhattua mieltymyksistäsi...",
+            "Keitän suositusjuomaa — melkein valmis...",
+        ]},
+    },
+    "cs": {
+        "sarcastic": {"thinking": [
+            "Jasně, nechám všechno být a najdu něco dokonalého...",
+            "Protože jsem evidentně neměl co lepšího dělat...",
+            "Dobře. Budu předstírat, že je to fascinující úkol...",
+        ]},
+        "wizarding": {"thinking": [
+            "Prohledávám zakázanou sekci něco dobrého...",
+            "Radím se s Moudrým kloboukem ohledně tvého vkusu...",
+            "Vařím lektvar doporučení — skoro hotovo...",
+        ]},
+    },
+    "el": {
+        "sarcastic": {"thinking": [
+            "Φυσικά, αφήνω τα πάντα και βρίσκω κάτι τέλειο...",
+            "Γιατί προφανώς δεν είχα κάτι καλύτερο να κάνω...",
+            "Εντάξει. Θα κάνω πως είναι συναρπαστική πρόκληση...",
+        ]},
+        "wizarding": {"thinking": [
+            "Ψάχνω στην Απαγορευμένη Βιβλιοθήκη κάτι καλό...",
+            "Συμβουλεύομαι το Διαλεκτικό Καπέλο για τα γούστα σου...",
+            "Ετοιμάζω φίλτρο συστάσεων — σχεδόν έτοιμο...",
+        ]},
+    },
+    "he": {
+        "sarcastic": {"thinking": [
+            "ברור, אני מפסיק הכל ומוצא משהו מושלם...",
+            "כי כמובן לא היה לי משהו יותר טוב לעשות...",
+            "בסדר. אעמיד פנים שזה אתגר מרתק...",
+        ]},
+        "wizarding": {"thinking": [
+            "בודק במדור האסור משהו ששווה לראות...",
+            "מתייעץ עם כובע המיון על הטעם שלך...",
+            "מכין שיקוי המלצות — כמעט מוכן...",
+        ]},
+    },
+    "th": {
+        "sarcastic": {"thinking": [
+            "ได้เลย ทิ้งทุกอย่างแล้วหาอะไรที่ perfect ให้...",
+            "เพราะแน่นอนว่าฉันไม่มีอะไรดีกว่านี้ทำ...",
+            "โอเค จะแสรงว่านี่เป็นความท้าทายที่น่าตื่นเต้น...",
+        ]},
+        "wizarding": {"thinking": [
+            "กำลังค้นหาในห้องสมุดต้องห้าม...",
+            "กำลังปรึกษาหมวกคัดเลือกเรื่องรสนิยมของคุณ...",
+            "กำลังปรุงยาแนะนำ — เกือบเสร็จแล้ว...",
+        ]},
+    },
+    "vi": {
+        "sarcastic": {"thinking": [
+            "Ừ, tôi bỏ hết việc và tìm cái hoàn hảo cho bạn...",
+            "Vì rõ ràng tôi chẳng có việc gì hay hơn...",
+            "Được rồi. Tôi sẽ giả vờ đây là thử thách thú vị...",
+        ]},
+        "wizarding": {"thinking": [
+            "Đang lục Khu vực Cấm tìm thứ đáng xem...",
+            "Đang hỏi Chiếc Nón Phân loại về gu của bạn...",
+            "Đang pha thuốc gợi ý — sắp xong rồi...",
+        ]},
+    },
+    "id": {
+        "sarcastic": {"thinking": [
+            "Tentu, aku tinggalkan semuanya dan cari yang sempurna...",
+            "Karena jelas-jelas aku nggak punya hal lebih baik...",
+            "Baiklah. Aku pura-pura ini tantangan seru...",
+        ]},
+        "wizarding": {"thinking": [
+            "Mengecek Bagian Terlarang untuk sesuatu yang bagus...",
+            "Berkonsultasi dengan Topi Pemilih soal selera kamu...",
+            "Meracik ramuan rekomendasi — hampir selesai...",
+        ]},
+    },
+    "ms": {
+        "sarcastic": {"thinking": [
+            "Sudah tentu, aku tinggalkan semua dan cari yang sempurna...",
+            "Sebab jelas aku tiada kerja lebih baik...",
+            "Baiklah. Aku pura-pura ini cabaran menarik...",
+        ]},
+        "wizarding": {"thinking": [
+            "Menyemak Bahagian Larangan untuk sesuatu yang bagus...",
+            "Berkonsultasi dengan Topi Sorting tentang citarasa kamu...",
+            "Meracik ramuan cadangan — hampir siap...",
+        ]},
+    },
+    "uk": {
+        "sarcastic": {"thinking": [
+            "Звісно, кидаю все і знайду щось ідеальне...",
+            "Бо очевидно мені нічого кращого не було робити...",
+            "Гаразд. Зроблю вигляд, що це захоплива задача...",
+        ]},
+        "wizarding": {"thinking": [
+            "Заглядаю до Забороненого відділу...",
+            "Консультуюся з Сортувальним Капелюхом щодо смаку...",
+            "Варю зілля рекомендацій — майже готове...",
+        ]},
+    },
+    "ro": {
+        "sarcastic": {"thinking": [
+            "Sigur, las totul și găsesc ceva perfect...",
+            "Pentru că evident n-am avut nimic mai bun de făcut...",
+            "Bine. Mă prefac că e o provocare fascinantă...",
+        ]},
+        "wizarding": {"thinking": [
+            "Caut în Secțiunea Interzisă ceva bun...",
+            "Consult Pălăria Selecționoasă despre gusturile tale...",
+            "Prepar o poțiune de recomandări — aproape gata...",
+        ]},
+    },
+    "hu": {
+        "sarcastic": {"thinking": [
+            "Persze, mindent félreteszek és találok valami tökéleteset...",
+            "Mert nyilván nem volt jobb dolgom...",
+            "Rendben. Úgy teszek, mintha izgalmas kihívás lenne...",
+        ]},
+        "wizarding": {"thinking": [
+            "A tiltott részlegben keresek valami jót...",
+            "A Télesztő Sisakkal konzultálok azon ítékodról...",
+            "Ajánlás-bájitalt főzök — majdnem kész...",
+        ]},
+    },
+    "sk": {
+        "sarcastic": {"thinking": [
+            "Jasné, nechám všetko a nájdem niečo dokonalé...",
+            "Lebo som evidentne nemal čo lepšie robiť...",
+            "Dobre. Budem predstierať, že je to fascinujúca úloha...",
+        ]},
+        "wizarding": {"thinking": [
+            "Prehľadávam zakázanú sekciu niečo dobré...",
+            "Radím sa s Triediacim klobúkom ohľadom tvojho vkusu...",
+            "Varím elixír odporúčaní — takmer hotovo...",
+        ]},
+    },
+}
+
+_RU_THINKING: Dict[str, list[str]] = {
+    "default": [
+        "Дай-ка подумаю о чём-нибудь хорошем...",
+        "Хм, поищу что-то, на что стоит потратить время...",
+        "Секунду — подберу что-то особенное...",
+        "Сейчас пробегусь по каталогу, чтобы найти удачный вариант...",
+        "Минутку — подберу что-то стоящее...",
+        "Дай подумать, что бы тебе зашло...",
+    ],
+    "casual": [
+        "Погоди, сейчас накопаю что-нибудь крутое...",
+        "Дай секунду — сейчас будет что-то хорошее...",
+        "Ладно-ладно, сейчас найду тебе удачный вариант...",
+        "Секунду, копаюсь в каталоге — скоро покажу...",
+        "Ща гляну, что у нас интересного есть...",
+        "Погоди-ка, сейчас вытащу что-нибудь огонь...",
+    ],
+    "warm": [
+        "Подберу что-то, что тебе правда понравится...",
+        "Выберу что-нибудь уютное и хорошее для тебя...",
+        "Секунду — хочу, чтобы это был отличный выбор...",
+        "Сейчас найду что-то тёплое и приятное...",
+        "Хочу подобрать тебе по-настоящему хороший вариант...",
+        "Минутку — выберу с заботой о твоём настроении...",
+    ],
+    "witty": [
+        "Консультируюсь с моим очень научным алгоритмом вкуса...",
+        "Бросаю кости рекомендаций — метафорически...",
+        "Сейчас обыщу хранилище хорошего для тебя...",
+        "Запускаю хитрый алгоритм отбора — звучит солидно...",
+        "Сейчас применю немного интеллектуального хитрства...",
+        "Копаюсь в каталоге с театральной серьёзностью...",
+    ],
+    "cinephile": [
+        "Составляю короткий список с лучших полок...",
+        "Пролистаю каталог в поисках чего-то достойного...",
+        "Секунду — выбираю из более тонких вариантов...",
+        "Сейчас отсею всё поверхностное — останется только достойное...",
+        "Пробегусь по каталогу с пристрастием киномана...",
+        "Минутку — подбираю из более редких и интересных находок...",
+    ],
+    "sarcastic": [
+        "Ну конечно, сейчас брошу всё и найду тебе идеальное...",
+        "Очень занят, но ладно — поищу что-нибудь...",
+        "Хорошо, сделаю вид, что это увлекательная задача...",
+        "Секунду — с непередаваемым энтузиазмом листаю каталог...",
+        "Какая неожиданность, ещё один запрос на рекомендации...",
+        "Сейчас с минимальным воодушевлением что-нибудь подберу...",
+    ],
+    "wizarding": [
+        "Заглядываю в Запретный отдел в поисках чего-то стоящего...",
+        "Консультируюсь с Сортировочной Шляпой по твоему вкусу...",
+        "Варю зелье рекомендаций — почти готово...",
+        "Листаю карту мародёров — то есть каталог фильмов...",
+        "Жду письмо из Хогвартса... то есть просматриваю каталог...",
+        "Произношу заклинание подбора — секунду...",
+    ],
+}
+
+
+def _apply_style_extensions() -> None:
+    for lang, new_styles in _STYLE_EXTENSIONS.items():
+        overlay = LANG_OVERLAYS.setdefault(lang, {"styles": {}, "shared": {}})
+        styles = overlay.setdefault("styles", {})
+        styles.update(new_styles)
+
+    ru_styles = LANG_OVERLAYS["ru"]["styles"]
+    for style_name, phrases in _RU_THINKING.items():
+        ru_styles[style_name] = {"thinking": phrases}
+
+
+_apply_style_extensions()
+
 __all__ = ["LANG_OVERLAYS"]

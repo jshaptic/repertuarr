@@ -56,7 +56,15 @@ DOWNLOAD_READY_NO_URL = "download_ready_no_url"
 
 STYLE_SPECIFIC_KEYS = frozenset({THINKING})
 
-SUPPORTED_STYLES = ("default", "casual", "warm", "witty", "cinephile")
+SUPPORTED_STYLES = (
+    "default",
+    "casual",
+    "warm",
+    "witty",
+    "cinephile",
+    "sarcastic",
+    "wizarding",
+)
 
 SUPPORTED_LANGUAGES = (
     "en", "es", "fr", "de", "it", "pt", "ru", "ja", "zh", "ko",
