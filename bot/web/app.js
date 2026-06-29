@@ -12,7 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabPanes = document.querySelectorAll('.tab-pane');
     const currentTabTitle = document.getElementById('current-tab-title');
     const currentTabSubtitle = document.getElementById('current-tab-subtitle');
-    const backToUsersBtn = document.getElementById('back-to-users');
+    const userBreadcrumbs = document.getElementById('user-breadcrumbs');
+    const breadcrumbUsersBtn = document.getElementById('breadcrumb-users');
+    const breadcrumbCurrent = document.getElementById('breadcrumb-current');
     const refreshBtn = document.getElementById('refresh-btn');
     const refreshIcon = document.getElementById('refresh-icon');
     const lastRefreshedEl = document.getElementById('last-refreshed');
@@ -52,6 +54,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById(targetId).classList.add('active');
         if (title) currentTabTitle.textContent = title;
         currentTabSubtitle.textContent = tabSubtitles[targetId] || '';
+        const isUserDetails = targetId === 'user-details';
+        if (currentTabTitle) currentTabTitle.hidden = isUserDetails;
+        if (userBreadcrumbs) userBreadcrumbs.hidden = !isUserDetails;
     }
 
     navItems.forEach(item => {
@@ -61,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    backToUsersBtn.addEventListener('click', () => {
+    breadcrumbUsersBtn.addEventListener('click', () => {
         switchTab('users', 'Users');
     });
 
@@ -176,29 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
     async function showUserDetails(userId, userName) {
         switchTab('user-details', userName);
         currentTabSubtitle.textContent = 'User profile';
-
-        // Reset sub-tabs to Chat
-        const userPane = document.getElementById('user-details');
-        const userDetailTabs = userPane.querySelectorAll('.detail-tab');
-        const userDetailPanes = userPane.querySelectorAll('.detail-tab-pane');
-        userDetailTabs.forEach(t => t.classList.remove('active'));
-        userDetailPanes.forEach(p => p.classList.remove('active'));
-        if (userDetailTabs.length > 0) userDetailTabs[0].classList.add('active');
-        if (userDetailPanes.length > 0) userDetailPanes[0].classList.add('active');
-
-        // Set avatar initials
-        const initials = userName.split(' ').map(w => w[0]).join('').slice(0, 2);
-        document.getElementById('detail-avatar').textContent = initials || '?';
-        document.getElementById('detail-user-name').textContent = userName;
+        if (breadcrumbCurrent) breadcrumbCurrent.textContent = userName;
 
         try {
-            const [mediaRes, chatRes, exclRes] = await Promise.all([
-                fetch(`/admin/api/media-library?user_id=${userId}`),
+            const [chatRes, exclRes] = await Promise.all([
                 fetch(`/admin/api/chat?user_id=${userId}`),
                 fetch(`/admin/api/exclusions?user_id=${userId}`)
             ]);
 
-            renderMediaLibrary(await mediaRes.json());
             renderChatTranscript(await chatRes.json());
             renderExclusions(await exclRes.json());
         } catch (error) {
@@ -297,13 +287,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /** Render recommendation exclusion summary cards for the current user. */
+    // Stat-card buckets shown on the user page (key -> modal title).
+    const EXCLUSION_BUCKETS = {
+        retained: 'Recently Shown Titles',
+        requested: 'Requested Titles',
+        watched: 'Watched Titles',
+        liked: 'Liked Titles',
+        disliked: 'Disliked Titles',
+        not_interested: 'Not Interested Titles',
+    };
+
+    /** Render per-user aggregate stat cards for the current user. */
     function renderExclusions(data) {
         const payload = data && typeof data === 'object' ? data : {};
-        const retained = Array.isArray(payload.retained) ? payload.retained : [];
-        const excluded = Array.isArray(payload.excluded) ? payload.excluded : [];
         const ttlHours = payload.ttl_hours;
-        latestExclusions = { ttl_hours: ttlHours, retained, excluded };
+        latestExclusions = { ttl_hours: ttlHours };
+
+        Object.keys(EXCLUSION_BUCKETS).forEach(bucket => {
+            const items = Array.isArray(payload[bucket]) ? payload[bucket] : [];
+            latestExclusions[bucket] = items;
+
+            const countEl = document.getElementById(`${bucket}-count`);
+            if (countEl) countEl.textContent = items.length;
+
+            const card = document.querySelector(`.user-stat[data-bucket="${bucket}"]`);
+            if (card) {
+                card.disabled = items.length === 0;
+                card.onclick = () => openExclusionModal(bucket);
+            }
+        });
 
         const retainedSub = document.getElementById('retained-sub');
         if (retainedSub) {
@@ -311,42 +323,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `Recently shown titles hidden for ${ttlHours}h.`
                 : 'Recently shown titles hidden until cooldown expires.';
         }
-
-        const retainedCount = document.getElementById('retained-count');
-        if (retainedCount) retainedCount.textContent = retained.length;
-        const excludedCount = document.getElementById('excluded-count');
-        if (excludedCount) excludedCount.textContent = excluded.length;
-
-        const retainedBtn = document.getElementById('view-retained');
-        if (retainedBtn) {
-            retainedBtn.disabled = retained.length === 0;
-            retainedBtn.onclick = () => openExclusionModal('retained');
-        }
-
-        const excludedBtn = document.getElementById('view-excluded');
-        if (excludedBtn) {
-            excludedBtn.disabled = excluded.length === 0;
-            excludedBtn.onclick = () => openExclusionModal('excluded');
-        }
     }
 
-    /** Open a modal with retained or permanently excluded titles. */
-    function openExclusionModal(type) {
-        const retained = type === 'retained';
-        const items = retained ? latestExclusions.retained : latestExclusions.excluded;
-        modalTitle.textContent = retained ? 'Recent Cooldown Titles' : 'Feedback Exclusion Titles';
+    /** Status pill for a media request row. */
+    function requestStatusPill(status) {
+        if (!status) return '<span class="pill pill-muted">—</span>';
+        const map = { 'pending': 'pill-amber', 'notified': 'pill-emerald' };
+        const cls = map[status.toLowerCase()] || 'pill-muted';
+        return `<span class="pill ${cls}">${escapeHtml(status)}</span>`;
+    }
+
+    /** Open a modal listing the titles in the given stat-card bucket. */
+    function openExclusionModal(bucket) {
+        const isCooldown = bucket === 'retained';
+        const isRequested = bucket === 'requested';
+        const items = Array.isArray(latestExclusions[bucket]) ? latestExclusions[bucket] : [];
+        modalTitle.textContent = EXCLUSION_BUCKETS[bucket] || 'Titles';
         setModalTabVisibility(false);
         setModalWide(true);
 
-        modalMeta.innerHTML = retained
+        modalMeta.innerHTML = isCooldown
             ? `
                 <div class="meta-item"><strong>Rule:</strong> recent recommendation cooldown</div>
                 <div class="meta-item"><strong>TTL:</strong> ${latestExclusions.ttl_hours || '—'}h</div>
                 <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
             `
             : `
-                <div class="meta-item"><strong>Rule:</strong> user feedback exclusion</div>
-                <div class="meta-item"><strong>Columns:</strong> watched / feedback / excluded</div>
                 <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
             `;
 
@@ -356,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (items.length === 0) {
             pane.innerHTML = '<div class="empty-state"><div class="empty-state-inner"><span>No titles to show</span></div></div>';
-        } else if (retained) {
+        } else if (isCooldown) {
             pane.innerHTML = `
                 <table class="suggested-table">
                     <thead><tr><th>Title</th><th>Original Title</th><th>TMDB</th><th>Recommended</th><th>Cooldown</th></tr></thead>
@@ -367,6 +369,20 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td>${escapeHtml(item.tmdb_id || '—')}</td>
                             <td>${escapeHtml(fullDate(item.recommended_at) || '—')}</td>
                             <td>${escapeHtml(formatExpiry(item.expires_at) || '—')}</td>
+                        </tr>
+                    `).join('')}</tbody>
+                </table>`;
+        } else if (isRequested) {
+            pane.innerHTML = `
+                <table class="suggested-table">
+                    <thead><tr><th>Title</th><th>Type</th><th>Status</th><th>TMDB / TVDB</th><th>Requested</th></tr></thead>
+                    <tbody>${items.map(item => `
+                        <tr>
+                            <td>${escapeHtml(item.title || '—')}</td>
+                            <td>${escapeHtml(item.media_type || '—')}</td>
+                            <td>${requestStatusPill(item.status)}</td>
+                            <td>${escapeHtml([item.tmdb_id, item.tvdb_id].filter(Boolean).join(' / ') || '—')}</td>
+                            <td>${escapeHtml(fullDate(item.created_at) || '—')}</td>
                         </tr>
                     `).join('')}</tbody>
                 </table>`;
@@ -657,47 +673,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.addEventListener('click', () => showUserDetails(item.user_id, item.name));
             tbody.appendChild(tr);
         });
-    }
-
-    // ── Render: User detail — Media Library (merged requests + feedback) ─
-    function renderMediaLibrary(data) {
-        document.getElementById('user-media-count').textContent = data.length || 0;
-        const tbody = document.getElementById('user-media-tbody');
-        if (!data || data.length === 0) {
-            tbody.innerHTML = emptyRow(8, 'No media interactions yet');
-            return;
-        }
-
-        // Helpers for rendering request status and provider IDs
-        function requestPill(status) {
-            if (!status) return '<span class="pill pill-muted">—</span>';
-            const map = {
-                'pending': 'pill-amber',
-                'notified': 'pill-emerald',
-            };
-            const cls = map[status.toLowerCase()] || 'pill-muted';
-            return `<span class="pill ${cls}">${escapeHtml(status)}</span>`;
-        }
-
-        function idsColumn(tmdb_id, tvdb_id) {
-            let parts = [];
-            if (tmdb_id) parts.push(`<span class="type-label">TMDB:</span> ${escapeHtml(tmdb_id)}`);
-            if (tvdb_id) parts.push(`<span class="type-label">TVDB:</span> ${escapeHtml(tvdb_id)}`);
-            return parts.length > 0 ? parts.join('<br>') : '<span class="pill pill-muted">—</span>';
-        }
-
-        tbody.innerHTML = data.map(item => `
-            <tr>
-                <td title="${escapeHtml(fullDate(item.created_at))}">${timeAgo(item.created_at)}</td>
-                <td style="font-weight:500;color:var(--text-primary)">${escapeHtml(item.title || '—')}</td>
-                <td class="type-label">${escapeHtml(item.media_type || '—')}</td>
-                <td style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.4;">${idsColumn(item.tmdb_id, item.tvdb_id)}</td>
-                <td>${requestPill(item.request_status)}</td>
-                <td>${watchedPill(item.watched)}</td>
-                <td>${feedbackPill(item.feedback)}</td>
-                <td>${excludedPill(item.excluded)}</td>
-            </tr>
-        `).join('');
     }
 
     // ── Render: Sessions table ─────────────────────────────────────

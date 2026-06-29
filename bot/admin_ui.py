@@ -166,12 +166,16 @@ def register_admin_routes(
             return web.json_response({"error": str(e)}, status=500)
 
     async def api_exclusions(request):
-        """Return titles excluded from recommendations for a user.
+        """Return per-user recommendation aggregates for the admin user page.
 
-        Two groups:
+        Buckets:
           - retained: temporarily held back due to a recent recommendation
             (cooldown expires after the configured TTL).
-          - excluded: permanently excluded due to watched/disliked/excluded feedback.
+          - requested: media the user asked the bot to add (Radarr/Sonarr).
+          - watched: every item the user has marked watched (overlaps liked/disliked).
+          - liked: items with a 'like' feedback.
+          - disliked: items with a 'dislike' feedback.
+          - not_interested: items the user explicitly excluded (ignore action).
         """
         try:
             user_id_str = request.query.get('user_id')
@@ -180,34 +184,21 @@ def register_admin_routes(
             user_id = int(user_id_str)
 
             retained = db.get_recent_recommendations(user_id, exclude_ttl_seconds)
+            requested = db.get_recent_media_requests(limit=500, user_id=user_id)
 
             feedback = db.get_user_feedback(user_id)
-            excluded = [
-                row for row in feedback
-                if row.get('watched') or row.get('feedback') == 'dislike' or row.get('excluded')
-            ]
 
             return web.json_response({
                 "ttl_hours": int(recommendation_exclude_ttl_hours),
                 "retained": retained,
-                "excluded": excluded,
+                "requested": requested,
+                "watched": [row for row in feedback if row.get('watched')],
+                "liked": [row for row in feedback if row.get('feedback') == 'like'],
+                "disliked": [row for row in feedback if row.get('feedback') == 'dislike'],
+                "not_interested": [row for row in feedback if row.get('excluded')],
             })
         except Exception as e:
             logger.error(f"Error fetching exclusions: {e}")
-            return web.json_response({"error": str(e)}, status=500)
-
-    async def api_media_library(request):
-        """Return unified media library (merged requests + feedback) for a user."""
-        try:
-            user_id_str = request.query.get('user_id')
-            if not user_id_str:
-                return web.json_response({"error": "user_id is required"}, status=400)
-            user_id = int(user_id_str)
-            limit = int(request.query.get('limit', 200))
-            rows = db.get_user_media_library(user_id=user_id, limit=limit)
-            return web.json_response(rows)
-        except Exception as e:
-            logger.error(f"Error fetching media library: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     # Add API routes
@@ -219,7 +210,6 @@ def register_admin_routes(
     app.router.add_get('/admin/api/sessions', api_sessions)
     app.router.add_get('/admin/api/sessions/{session_id}', api_session_detail)
     app.router.add_get('/admin/api/users', api_users)
-    app.router.add_get('/admin/api/media-library', api_media_library)
     app.router.add_get('/admin/api/chat', api_chat)
     app.router.add_get('/admin/api/exclusions', api_exclusions)
     

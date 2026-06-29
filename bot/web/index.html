@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Repertuarr — Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/admin/static/styles.css?v=29">
+    <link rel="stylesheet" href="/admin/static/styles.css?v=35">
 </head>
 <body>
     <div class="app-container">
@@ -74,7 +74,14 @@
         <main class="main-content" id="main-content">
             <header class="top-bar">
                 <div class="top-bar-left">
-                    <h2 id="current-tab-title">Dashboard</h2>
+                    <div class="top-title-row">
+                        <h2 id="current-tab-title">Dashboard</h2>
+                        <nav id="user-breadcrumbs" class="breadcrumbs" aria-label="Breadcrumb" hidden>
+                            <button id="breadcrumb-users" class="breadcrumb-link" type="button">Users</button>
+                            <span class="breadcrumb-separator">/</span>
+                            <span id="breadcrumb-current" class="breadcrumb-current">User</span>
+                        </nav>
+                    </div>
                     <span class="top-bar-subtitle" id="current-tab-subtitle">System overview</span>
                 </div>
                 <div class="header-actions">
@@ -168,98 +175,63 @@
 
                 <!-- User Details Section (hidden by default) -->
                 <div id="user-details" class="tab-pane">
-                    <div class="user-details-header">
-                        <button id="back-to-users" class="btn-back">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            Back
-                        </button>
-                        <div class="user-identity">
-                            <div class="user-avatar" id="detail-avatar">?</div>
-                            <h2 id="detail-user-name">User Details</h2>
-                        </div>
-                    </div>
-
-                    <!-- Sub-tab bar -->
-                    <div class="detail-tabs">
-                        <button class="detail-tab active" data-detail-target="detail-chat">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                            Chat
-                            <span class="badge" id="user-chat-count">0</span>
-                        </button>
-                        <button class="detail-tab" data-detail-target="detail-media-library">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>
-                            Media Library
-                            <span class="badge" id="user-media-count">0</span>
-                        </button>
-                    </div>
-
-                    <!-- Chat sub-tab (full conversation transcript) -->
-                    <div id="detail-chat" class="detail-tab-pane active">
-                        <div class="chat-workspace">
-                            <aside class="chat-state">
-                                <div class="chat-state-header">
-                                    <span class="chat-state-kicker">Chat state</span>
-                                    <h3>Recommendation context</h3>
-                                    <p>What this user will not see in new recommendation turns.</p>
-                                </div>
-                                <section class="card glass-effect exclusions-card chat-context-card">
-                                    <div class="exclusions-grid">
-                                        <div class="exclusions-block">
-                                            <div class="exclusions-head">
-                                                <span class="exclusions-dot dot-amber"></span>
-                                                <div>
-                                                    <h3>Recent cooldown</h3>
-                                                    <p class="exclusions-sub" id="retained-sub">Recently shown titles hidden until cooldown expires.</p>
-                                                </div>
-                                            </div>
-                                            <div class="exclusions-actions">
-                                                <span class="exclusions-count" id="retained-count">0</span>
-                                                <button class="exclusions-view" id="view-retained" type="button" disabled>View titles</button>
-                                            </div>
-                                        </div>
-                                        <div class="exclusions-block">
-                                            <div class="exclusions-head">
-                                                <span class="exclusions-dot dot-rose"></span>
-                                                <div>
-                                                    <h3>Feedback exclusions</h3>
-                                                    <p class="exclusions-sub">Watched, disliked, and ignored titles always hidden.</p>
-                                                </div>
-                                            </div>
-                                            <div class="exclusions-actions">
-                                                <span class="exclusions-count" id="excluded-count">0</span>
-                                                <button class="exclusions-view" id="view-excluded" type="button" disabled>View titles</button>
-                                            </div>
-                                        </div>
+                    <!-- User workspace: stat cards (left) + chat transcript (right) -->
+                    <div class="chat-workspace">
+                        <aside class="chat-state">
+                            <div class="user-stat-list">
+                                <button class="user-stat" type="button" data-bucket="retained" disabled>
+                                    <span class="user-stat-dot dot-amber"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Recently shown</span>
+                                        <span class="user-stat-sub" id="retained-sub">Recently shown titles hidden until cooldown expires.</span>
                                     </div>
-                                </section>
-                            </aside>
-
-                            <section class="card glass-effect chat-panel">
-                                <div id="user-chat-transcript" class="chat-transcript"></div>
-                            </section>
-                        </div>
-                    </div>
-
-                    <!-- Media Library sub-tab (merged Requests + Feedback) -->
-                    <div id="detail-media-library" class="detail-tab-pane">
-                        <section class="card glass-effect">
-                            <div class="table-container">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Date</th>
-                                            <th>Title</th>
-                                            <th>Type</th>
-                                            <th>IDs</th>
-                                            <th>Request</th>
-                                            <th>Watched</th>
-                                            <th>Feedback</th>
-                                            <th>Excluded</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="user-media-tbody"></tbody>
-                                </table>
+                                    <span class="user-stat-count" id="retained-count">0</span>
+                                </button>
+                                <button class="user-stat" type="button" data-bucket="requested" disabled>
+                                    <span class="user-stat-dot dot-blue"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Requested</span>
+                                        <span class="user-stat-sub">Titles the user asked to add.</span>
+                                    </div>
+                                    <span class="user-stat-count" id="requested-count">0</span>
+                                </button>
+                                <button class="user-stat" type="button" data-bucket="watched" disabled>
+                                    <span class="user-stat-dot dot-emerald"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Watched</span>
+                                        <span class="user-stat-sub">Everything marked as watched.</span>
+                                    </div>
+                                    <span class="user-stat-count" id="watched-count">0</span>
+                                </button>
+                                <button class="user-stat" type="button" data-bucket="liked" disabled>
+                                    <span class="user-stat-dot dot-emerald"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Liked</span>
+                                        <span class="user-stat-sub">Titles the user liked.</span>
+                                    </div>
+                                    <span class="user-stat-count" id="liked-count">0</span>
+                                </button>
+                                <button class="user-stat" type="button" data-bucket="disliked" disabled>
+                                    <span class="user-stat-dot dot-rose"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Disliked</span>
+                                        <span class="user-stat-sub">Titles the user disliked.</span>
+                                    </div>
+                                    <span class="user-stat-count" id="disliked-count">0</span>
+                                </button>
+                                <button class="user-stat" type="button" data-bucket="not_interested" disabled>
+                                    <span class="user-stat-dot dot-rose"></span>
+                                    <div class="user-stat-body">
+                                        <span class="user-stat-label">Not interested</span>
+                                        <span class="user-stat-sub">Titles the user does not want to watch.</span>
+                                    </div>
+                                    <span class="user-stat-count" id="not_interested-count">0</span>
+                                </button>
                             </div>
+                        </aside>
+
+                        <section class="card glass-effect chat-panel" aria-label="Chat transcript">
+                            <div id="user-chat-transcript" class="chat-transcript"></div>
                         </section>
                     </div>
                 </div>
@@ -448,6 +420,6 @@
     <!-- Sidebar overlay for mobile -->
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
-    <script type="module" src="/admin/static/app.js?v=36"></script>
+    <script type="module" src="/admin/static/app.js?v=41"></script>
 </body>
 </html>
