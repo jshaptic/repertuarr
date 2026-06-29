@@ -22,7 +22,7 @@ This file serves as the canonical guidelines for any AI agents or tools interact
   - `database.py`: Local database operations for saving user feedback (watched/disliked), media requests, etc.
   - `webhook.py`: An `aiohttp` web server to receive notifications from Radarr/Sonarr to notify the user.
   - `jellyfin.py`: Client to interact with Jellyfin API.
-  - `translations.py`: Localization strings mapping based on languages.
+  - `phrases/`: Localized phrase catalogs (YAML), personality styles, and random variant selection for bot copy.
   - `prompts/`: Mustache templates used for LLM interaction.
 
 ## Important rules

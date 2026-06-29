@@ -1,7 +1,8 @@
 import logging
 import json
 from aiohttp import web
-from .translations import get_text
+from .phrases import get_phrase
+from .phrases import keys as phrase_keys
 from .jellyfin import JellyfinClient
 from .admin_ui import register_admin_routes
 
@@ -29,14 +30,14 @@ async def start_webhook_server(
     """
     port = config.get('webhook_port', 8585)
 
-    # Build a lookup of messenger_user_id -> language
-    user_lang_map = {}
+    # Build a lookup of messenger_user_id -> preferences
+    user_prefs_map = {}
     for user in users_config:
         account = user.get('messenger', {})
         if account.get('messenger_name') == messenger_name:
             uid = account.get('user_id')
             if uid:
-                user_lang_map[uid] = user.get('preferences', {}).get('language', 'en')
+                user_prefs_map[uid] = user.get('preferences', {})
 
     # ── Radarr ────────────────────────────────────────────────────────
     
@@ -178,18 +179,20 @@ async def start_webhook_server(
         for req in requests_found:
             telegram_id = req['telegram_id']
             request_id = req['id']
-            lang = user_lang_map.get(telegram_id, 'en')
+            prefs = user_prefs_map.get(telegram_id, {'language': 'en', 'bot_style': 'default'})
 
             # Build notification text with an inline link (no buttons)
             if jellyfin_url:
-                play_label = get_text(lang, 'play_button')
-                text = get_text(lang, 'download_ready').format(
+                play_label = get_phrase(prefs, phrase_keys.PLAY_BUTTON)
+                text = get_phrase(
+                    prefs,
+                    phrase_keys.DOWNLOAD_READY,
                     title=title,
                     play_label=play_label,
                     url=jellyfin_url,
                 )
             else:
-                text = get_text(lang, 'download_ready_no_url').format(title=title)
+                text = get_phrase(prefs, phrase_keys.DOWNLOAD_READY_NO_URL, title=title)
 
             try:
                 await bot_app.bot.send_message(

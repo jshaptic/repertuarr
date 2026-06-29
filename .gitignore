@@ -34,7 +34,7 @@ venv.bak/
 
 # Project specific
 config.yaml
-data/
+/data/
 *.sqlite3
 *.db
 *.pickle

@@ -14,14 +14,16 @@ import json
 import time
 import re
 import uuid
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandler, filters, CallbackQueryHandler
 from openai import OpenAI
 import chevron
 import os
 from bot.models import IntentResponse, RecommendationResponse, InquiryResponse
 from bot.database import Database
-from bot.translations import get_text
+from bot.phrases import keys as phrase_keys
+from bot.phrases import get_phrase, build_recommend_keyboard, is_recommend_trigger
+from bot.phrases.replies import reply_bot_text, send_thinking_message
 from bot.jellyfin import JellyfinClient
 from bot.session_context import set_session_id, reset_session_id
 from bot.service_request import make_service_request
@@ -153,17 +155,25 @@ def register_handlers(app: Application, config: dict, auth_func):
         instance = arr_map.get(name, {})
         return instance.get('url'), instance.get('key')
 
+    def _user_prefs(context: ContextTypes.DEFAULT_TYPE) -> dict:
+        user_info = context.user_data.get('user_info', {})
+        return user_info.get('preferences', {})
+
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
-        sent = await update.message.reply_text("🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!")
-        add_to_history(update, context, "assistant", "🎬 Media Bot Online. Use /status to check services, or just ask me to add a movie/show!", sent)
+        prefs = user_data.get('preferences', {})
+        await reply_bot_text(
+            update, prefs, phrase_keys.WELCOME,
+            add_to_history=add_to_history, context=context,
+        )
 
     async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
+        prefs = user_data.get('preferences', {})
         
         sonarr_url = config.get('sonarr_url')
         sonarr_key = config.get('sonarr_key')
@@ -180,25 +190,33 @@ def register_handlers(app: Application, config: dict, auth_func):
                     timeout=5,
                 )
                 if resp.status_code == 200:
-                    status_lines.append("✅ Sonarr: Online")
+                    status_lines.append(get_phrase(prefs, phrase_keys.STATUS_SONARR_ONLINE))
                 else:
-                    status_lines.append(f"⚠️ Sonarr: Error {resp.status_code}")
+                    status_lines.append(get_phrase(
+                        prefs, phrase_keys.STATUS_SONARR_ERROR, status_code=resp.status_code,
+                    ))
             except Exception as e:
-                status_lines.append(f"❌ Sonarr: Unreachable ({str(e)})")
+                status_lines.append(get_phrase(
+                    prefs, phrase_keys.STATUS_SONARR_UNREACHABLE, error=str(e),
+                ))
         else:
-            status_lines.append("ℹ️ Sonarr: Not configured")
+            status_lines.append(get_phrase(prefs, phrase_keys.STATUS_SONARR_NOT_CONFIGURED))
 
         response_text = "\n".join(status_lines)
-        sent = await update.message.reply_text(response_text)
+        keyboard = build_recommend_keyboard(prefs)
+        sent = await update.message.reply_text(response_text, reply_markup=keyboard)
         add_to_history(update, context, "assistant", response_text, sent)
 
     async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
         if not user_data: return
         context.user_data['user_info'] = user_data
+        prefs = user_data.get('preferences', {})
         if not openai_clients:
-            sent = await update.message.reply_text("⚠️ LLM not configured. Cannot process request.")
-            add_to_history(update, context, "assistant", "⚠️ LLM not configured. Cannot process request.", sent)
+            await reply_bot_text(
+                update, prefs, phrase_keys.LLM_NOT_CONFIGURED,
+                add_to_history=add_to_history, context=context,
+            )
             return
 
         user_text = update.message.text
@@ -217,6 +235,13 @@ def register_handlers(app: Application, config: dict, auth_func):
         add_to_history(update, context, "user", user_text, update.message)
 
         try:
+            if is_recommend_trigger(user_text, prefs):
+                detected_intent = 'RECOMMEND'
+                await handle_recommend_request(
+                    update, context, IntentResponse(intent='RECOMMEND', query=None),
+                )
+                return
+
             # 1. Classify with LLM
             # Build messages: System + History
             system_content = load_prompt(agent_prompts.get('intent', {}))
@@ -225,8 +250,7 @@ def register_handlers(app: Application, config: dict, auth_func):
             # History from DB already includes the user message stored above.
             messages.extend(get_llm_history(update.effective_user.id))
             
-            # Log the request
-            logger.info(f"Sending LLM Request (Intent): {json.dumps(messages, ensure_ascii=False)}")
+            logger.info("Sending LLM Request (Intent)")
             
             start_time = time.time()
             llm_cfg, current_client = get_agent_llm('intent')
@@ -269,15 +293,18 @@ def register_handlers(app: Application, config: dict, auth_func):
                 await handle_inquiry_request(update, context, result)
             
             else:
-                resp_text = "🤔 I'm not sure what you want."
-                sent = await update.message.reply_text(resp_text)
-                add_to_history(update, context, "assistant", resp_text, sent)
+                await reply_bot_text(
+                    update, prefs, phrase_keys.UNKNOWN_INTENT,
+                    add_to_history=add_to_history, context=context,
+                )
 
         except Exception as e:
             session_status = 'failed'
             logger.error(f"Error processing message: {e}")
-            sent = await update.message.reply_text("❌ Something went wrong processing your request.")
-            add_to_history(update, context, "assistant", "❌ Something went wrong processing your request.", sent)
+            await reply_bot_text(
+                update, prefs, phrase_keys.REQUEST_ERROR,
+                add_to_history=add_to_history, context=context,
+            )
         finally:
             reset_session_id(ctx_token)
             if context.user_data.get('session_status') == 'failed':
@@ -289,12 +316,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         user_text = update.message.text
         logger.info(f"Handling inquiry for: {user_text}")
         
-        # Get user language preference
-        user_info = context.user_data.get('user_info', {})
-        user_lang = user_info.get('preferences', {}).get('language', 'en')
-        thinking_msg = get_text(user_lang, 'thinking')
-        
-        await update.message.reply_text(thinking_msg)
+        prefs = _user_prefs(context)
+        user_lang = prefs.get('language', 'en')
+        await send_thinking_message(update, prefs)
         
         try:
             # Build messages: System + History
@@ -337,8 +361,8 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
 
             reply_text = parsed.reply_text
-            
-            sent = await update.message.reply_text(reply_text)
+            keyboard = build_recommend_keyboard(prefs)
+            sent = await update.message.reply_text(reply_text, reply_markup=keyboard)
             add_to_history(update, context, "assistant", reply_text, sent)
             
             if parsed.items:
@@ -348,26 +372,23 @@ def register_handlers(app: Application, config: dict, auth_func):
         except Exception as e:
             context.user_data['session_status'] = 'failed'
             logger.error(f"Inquiry error: {e}")
-            sent = await update.message.reply_text("❌ Error generating response.")
-            add_to_history(update, context, "assistant", "❌ Error generating response.", sent)
+            await reply_bot_text(
+                update, prefs, phrase_keys.INQUIRY_ERROR,
+                add_to_history=add_to_history, context=context,
+            )
 
     async def handle_recommend_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
         query = data.query or 'something good'
         logger.info(f"Generating recommendations for: {query}")
         
-        # Get user language preference
-        user_info = context.user_data.get('user_info', {})
-        user_lang = user_info.get('preferences', {}).get('language', 'en')
-        thinking_msg = get_text(user_lang, 'thinking')
-        
-        await update.message.reply_text(thinking_msg)
+        prefs = _user_prefs(context)
+        user_lang = prefs.get('language', 'en')
+        await send_thinking_message(update, prefs)
         
         try:
-             # Get user context for personalized recommendations
              user_info = context.user_data.get('user_info', {})
              user_name = user_info.get('name', '')
-             user_prefs = user_info.get('preferences', {})
-             user_lang = user_prefs.get('language', 'en')
+             user_prefs = prefs
              
              # Get preferences for personalized recommendations
              user_preferences = user_prefs.get('profile', '')
@@ -414,7 +435,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  feedback_message,
                  recommendation_prompt,
              )
-             logger.info(f"Sending LLM Request (Recommend): {recommendation_input}")
+             logger.info("Sending LLM Request (Recommend)")
              
              start_time = time.time()
              llm_cfg, current_client = get_agent_llm('recommend')
@@ -447,8 +468,10 @@ def register_handlers(app: Application, config: dict, auth_func):
              )
 
              if not parsed_response or not parsed_response.items:
-                 sent = await update.message.reply_text("❌ Couldn't generate recommendations.")
-                 add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
+                 await reply_bot_text(
+                     update, prefs, phrase_keys.RECOMMEND_FAILED,
+                     add_to_history=add_to_history, context=context,
+                 )
                  return
              
              # Filter out watched/disliked/recently recommended content
@@ -481,14 +504,14 @@ def register_handlers(app: Application, config: dict, auth_func):
              )
              
              if not items:
-                 sent = await update.message.reply_text("❌ Couldn't generate recommendations.")
-                 add_to_history(update, context, "assistant", "❌ Couldn't generate recommendations.", sent)
+                 await reply_bot_text(
+                     update, prefs, phrase_keys.RECOMMEND_FAILED,
+                     add_to_history=add_to_history, context=context,
+                 )
                  return
 
              carousel_items = items[:recommendation_carousel_count]
 
-             reply_markup = ReplyKeyboardMarkup([['Recommend more']], resize_keyboard=True, one_time_keyboard=False)
-             
              await start_carousel(update, context, list(carousel_items), 'movie')
              db.record_recent_recommendations(user_id, carousel_items)
              add_to_history(update, context, "assistant", f"Shared recommendations carousel for '{query}'")
@@ -496,16 +519,21 @@ def register_handlers(app: Application, config: dict, auth_func):
         except Exception as e:
              context.user_data['session_status'] = 'failed'
              logger.error(f"Recommendation error: {e}")
-             sent = await update.message.reply_text("❌ Error generating recommendations.")
-             add_to_history(update, context, "assistant", "❌ Error generating recommendations.", sent)
+             await reply_bot_text(
+                 update, prefs, phrase_keys.RECOMMEND_ERROR,
+                 add_to_history=add_to_history, context=context,
+             )
 
     async def handle_add_media_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
         title = data.title
         media_type = data.media_type # Default to movie
+        prefs = _user_prefs(context)
         
         if not title:
-            sent = await update.message.reply_text("❓ I understood you want to add media, but I couldn't figure out the title.")
-            add_to_history(update, context, "assistant", "❓ I understood you want to add media, but I couldn't figure out the title.", sent)
+            await reply_bot_text(
+                update, prefs, phrase_keys.ADD_MEDIA_NO_TITLE,
+                add_to_history=add_to_history, context=context,
+            )
             return
 
         logger.info(f"Initiating search for '{title}' as {media_type}")
@@ -515,21 +543,25 @@ def register_handlers(app: Application, config: dict, auth_func):
         if media_type == 'movie':
             url, key = resolve_arr(user_info, 'movie')
             if not url:
-                await update.message.reply_text("⚠️ No Radarr instance configured for your account.")
+                await reply_bot_text(update, prefs, phrase_keys.NO_RADARR)
                 return
             await search_and_display(update, context, title, url, key, 'movie')
 
         elif media_type == 'series':
             url, key = resolve_arr(user_info, 'series')
             if not url:
-                await update.message.reply_text("⚠️ No Sonarr instance configured for your account.")
+                await reply_bot_text(update, prefs, phrase_keys.NO_SONARR)
                 return
             await search_and_display(update, context, title, url, key, 'series')
         else:
-             sent = await update.message.reply_text(f"❓ Ambiguous media type for '{title}'.")
-             add_to_history(update, context, "assistant", f"Ambiguous media type for '{title}'.", sent)
+             await reply_bot_text(
+                 update, prefs, phrase_keys.AMBIGUOUS_MEDIA_TYPE, title=title,
+                 add_to_history=add_to_history, context=context,
+             )
 
     async def search_and_display(update: Update, context: ContextTypes.DEFAULT_TYPE, title: str, base_url: str, api_key: str, type_: str):
+        prefs = _user_prefs(context)
+        type_label = type_.capitalize()
         endpoint = "movie" if type_ == "movie" else "series"
         lookup_endpoint = f"{base_url}/api/v3/{endpoint}/lookup"
         
@@ -545,8 +577,11 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if not results:
                 logger.info("Search returned 0 results.")
-                sent = await update.message.reply_text(f"❌ No results found for '{title}' on {type_.capitalize()} DB.")
-                add_to_history(update, context, "assistant", f"❌ No results found for '{title}' on {type_.capitalize()} DB.", sent)
+                await reply_bot_text(
+                    update, prefs, phrase_keys.NO_SEARCH_RESULTS,
+                    title=title, type=type_label,
+                    add_to_history=add_to_history, context=context,
+                )
                 return
             
             # --- Filtering & Sorting ---
@@ -558,8 +593,10 @@ def register_handlers(app: Application, config: dict, auth_func):
                 filtered_results.append(item)
             
             if not filtered_results:
-                 sent = await update.message.reply_text(f"❌ No released media found for '**{title}**'.")
-                 add_to_history(update, context, "assistant", f"❌ No released media found for '**{title}**'.", sent)
+                 await reply_bot_text(
+                     update, prefs, phrase_keys.NO_RELEASED_MEDIA, title=title,
+                     add_to_history=add_to_history, context=context, parse_mode='Markdown',
+                 )
                  return
 
             # Sort by Popularity
@@ -574,8 +611,10 @@ def register_handlers(app: Application, config: dict, auth_func):
 
         except Exception as e:
             logger.error(f"Search Exception: {e}")
-            sent = await update.message.reply_text(f"❌ Error communicating with {type_.capitalize()}.")
-            add_to_history(update, context, "assistant", f"❌ Error communicating with {type_.capitalize()}.", sent)
+            await reply_bot_text(
+                update, prefs, phrase_keys.ARR_ERROR, type=type_label,
+                add_to_history=add_to_history, context=context,
+            )
 
     async def lookup_metadata(title: str, year: int, type_: str, user_info: dict):
         # Helper to find specific item in Radarr/Sonarr to get ID and Poster
@@ -701,7 +740,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         if overview and len(overview) > 150: overview = overview[:147] + "..."
         
-        caption = f"🎬 **{t}** ({y})\n{overview}\n\n(Result {idx+1}/{total})"
+        prefs = _user_prefs(context)
+        footer = get_phrase(prefs, phrase_keys.CAROUSEL_FOOTER, idx=idx + 1, total=total)
+        caption = f"🎬 **{t}** ({y})\n{overview}\n\n{footer}"
         
         # Buttons - Two rows:
         # Row 1: [⬅️] [➕ Add / ✅ Added] [➡️]
@@ -735,7 +776,8 @@ def register_handlers(app: Application, config: dict, auth_func):
         ]
         
         if id_val:
-            add_button = InlineKeyboardButton("✅ Added", callback_data="NOP") if already_available else InlineKeyboardButton("➕ Add", callback_data=f"ADD|{type_}|{id_val}")
+            add_label = get_phrase(prefs, phrase_keys.INLINE_ADDED) if already_available else get_phrase(prefs, phrase_keys.INLINE_ADD)
+            add_button = InlineKeyboardButton(add_label, callback_data="NOP" if already_available else f"ADD|{type_}|{id_val}")
             action_row.append(add_button)
             
         rows = [action_row]
@@ -755,9 +797,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         rows.append(nav_row)
 
         if jf_url:
-            rows.append([InlineKeyboardButton("▶️ Play on Jellyfin", url=jf_url)])
+            play_label = get_phrase(prefs, phrase_keys.PLAY_BUTTON)
+            rows.append([InlineKeyboardButton(play_label, url=jf_url)])
             
-        reply_markup = InlineKeyboardMarkup(rows)
+        inline_markup = InlineKeyboardMarkup(rows)
         
         try:
             from telegram import InputMediaPhoto
@@ -765,26 +808,29 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if is_new:
                 if remote_poster:
-                     return await update.message.reply_photo(photo=remote_poster, caption=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                     return await update.message.reply_photo(
+                         photo=remote_poster,
+                         caption=caption,
+                         parse_mode='Markdown',
+                         reply_markup=inline_markup,
+                     )
                 else:
-                     return await update.message.reply_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                     return await update.message.reply_text(
+                         text=caption,
+                         parse_mode='Markdown',
+                         reply_markup=inline_markup,
+                     )
             elif msg: 
                  if remote_poster:
                       if msg.photo:
-                          await msg.edit_media(media=InputMediaPhoto(media=remote_poster, caption=caption, parse_mode='Markdown'), reply_markup=reply_markup)
+                          await msg.edit_media(media=InputMediaPhoto(media=remote_poster, caption=caption, parse_mode='Markdown'), reply_markup=inline_markup)
                       else:
-                          # Can't switch from text to media easily without deleting. 
-                          # Ideally we delete and send new if types mismatch, but edit_message_text is safer for consistency.
-                          # If we started with text and now have photo...
-                          # For now, if msg.photo is None, stay text.
-                          await msg.edit_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                          await msg.edit_text(text=caption, parse_mode='Markdown', reply_markup=inline_markup)
                  else:
                       if msg.photo:
-                           # Had photo, now no photo. Edit caption? Or use placeholder?
-                           # Edit caption
-                           await msg.edit_caption(caption=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                           await msg.edit_caption(caption=caption, parse_mode='Markdown', reply_markup=inline_markup)
                       else:
-                           await msg.edit_text(text=caption, parse_mode='Markdown', reply_markup=reply_markup)
+                           await msg.edit_text(text=caption, parse_mode='Markdown', reply_markup=inline_markup)
                  return msg
 
         except Exception as ex:
@@ -811,9 +857,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         user_data = auth_func(update.effective_user.id)
         if not user_data: 
-            await query.answer("Unauthorized", show_alert=True)
+            await query.answer(get_phrase(_user_prefs(context), phrase_keys.UNAUTHORIZED), show_alert=True)
             return
         context.user_data['user_info'] = user_data
+        prefs = _user_prefs(context)
 
         data = query.data
         logger.info(f"Callback received: {data}")
@@ -825,7 +872,7 @@ def register_handlers(app: Application, config: dict, auth_func):
 
             state = db.get_carousel_state(chat_id, message_id)
             if not state:
-                await query.answer("This carousel has expired.", show_alert=True)
+                await query.answer(get_phrase(prefs, phrase_keys.CAROUSEL_EXPIRED), show_alert=True)
                 return
 
             results = state['results']
@@ -894,11 +941,11 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
             
             if feedback_type == "watched":
-                feedback_msg = "✅ Marked as watched"
+                feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_WATCHED)
             elif feedback_type == "disliked":
-                feedback_msg = "✅ Marked as disliked"
+                feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_DISLIKED)
             else:
-                feedback_msg = "✅ Ignored"
+                feedback_msg = get_phrase(prefs, phrase_keys.FEEDBACK_IGNORED)
                 
             await query.answer(feedback_msg, show_alert=False)
             logger.info(f"User {user_id} marked {title} as {feedback_type}")
@@ -908,7 +955,7 @@ def register_handlers(app: Application, config: dict, auth_func):
             await query.answer()
             return
 
-        await query.answer("Adding to library...") 
+        await query.answer(get_phrase(prefs, phrase_keys.ADDING_TO_LIBRARY)) 
         
         _, type_, id_val = data.split("|")
         
@@ -917,19 +964,19 @@ def register_handlers(app: Application, config: dict, auth_func):
         if type_ == 'movie':
              url, key = resolve_arr(user_info, 'movie')
              if not url:
-                 await query.answer("⚠️ No Radarr configured for your account.", show_alert=True)
+                 await query.answer(get_phrase(prefs, phrase_keys.NO_RADARR), show_alert=True)
                  return
              quality_profile = user_info.get('radarr', {}).get('quality_profile')
-             await perform_add(query, id_val, url, key, 'movie', user_id, quality_profile)
+             await perform_add(query, id_val, url, key, 'movie', user_id, quality_profile, prefs)
         else:
              url, key = resolve_arr(user_info, 'series')
              if not url:
-                 await query.answer("⚠️ No Sonarr configured for your account.", show_alert=True)
+                 await query.answer(get_phrase(prefs, phrase_keys.NO_SONARR), show_alert=True)
                  return
              quality_profile = user_info.get('sonarr', {}).get('quality_profile')
-             await perform_add(query, id_val, url, key, 'series', user_id, quality_profile)
+             await perform_add(query, id_val, url, key, 'series', user_id, quality_profile, prefs)
 
-    async def perform_add(query, id_val: str, base_url: str, api_key: str, type_: str, user_id: int = None, quality_profile: str = None):
+    async def perform_add(query, id_val: str, base_url: str, api_key: str, type_: str, user_id: int = None, quality_profile: str = None, prefs: dict = None):
         endpoint = "movie" if type_ == "movie" else "series"
         lookup_endpoint = f"{base_url}/api/v3/{endpoint}/lookup"
         add_endpoint = f"{base_url}/api/v3/{endpoint}"
@@ -952,14 +999,16 @@ def register_handlers(app: Application, config: dict, auth_func):
             
             if not results:
                 logger.error("Lookup by ID returned no results.")
-                await query.edit_message_caption(caption=f"{query.message.caption}\n\n❌ **Error: Item not found during add.**", parse_mode='Markdown')
+                add_not_found = get_phrase(prefs or {}, phrase_keys.ADD_NOT_FOUND)
+                await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_not_found}", parse_mode='Markdown')
                 return
             
             candidate = results[0]
             
             # Check existing
             if candidate.get('id', 0) > 0: # Already managed
-                 await query.edit_message_caption(caption=f"{query.message.caption}\n\n⚠️ **Already in library!**", parse_mode='Markdown')
+                 already_in_library = get_phrase(prefs or {}, phrase_keys.ALREADY_IN_LIBRARY)
+                 await query.edit_message_caption(caption=f"{query.message.caption}\n\n{already_in_library}", parse_mode='Markdown')
                  logger.info(f"Item {candidate.get('title')} already exists.")
                  return
 
@@ -1046,7 +1095,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                         new_row = []
                         for btn in row:
                             if btn.callback_data and btn.callback_data.startswith('ADD|'):
-                                new_row.append(InlineKeyboardButton("⏳ Downloading", callback_data="NOP"))
+                                downloading = get_phrase(prefs or {}, phrase_keys.INLINE_DOWNLOADING)
+                                new_row.append(InlineKeyboardButton(downloading, callback_data="NOP"))
                             else:
                                 new_row.append(btn)
                         new_rows.append(new_row)
@@ -1058,16 +1108,18 @@ def register_handlers(app: Application, config: dict, auth_func):
             else:
                 err_text = resp_add.text
                 logger.error(f"Add failed: {resp_add.status_code} - {err_text}")
-                await query.edit_message_caption(caption=f"{query.message.caption}\n\n❌ **Failed to add.**", parse_mode='Markdown')
+                add_failed = get_phrase(prefs or {}, phrase_keys.ADD_FAILED)
+                await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_failed}", parse_mode='Markdown')
 
         except Exception as e:
             logger.error(f"Exception during perform_add: {e}")
             # Try to inform user
             try:
+                add_error = get_phrase(prefs or {}, phrase_keys.ADD_ERROR)
                 if query.message.caption:
-                     await query.edit_message_caption(caption=f"{query.message.caption}\n\n❌ **Error occurred.**", parse_mode='Markdown')
+                     await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_error}", parse_mode='Markdown')
                 else:
-                     await query.edit_message_text(text=f"{query.message.text}\n\n❌ **Error occurred.**", parse_mode='Markdown')
+                     await query.edit_message_text(text=f"{query.message.text}\n\n{add_error}", parse_mode='Markdown')
             except:
                 pass
 
@@ -1081,8 +1133,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         removed = db.clear_chat(update.effective_user.id)
         db.clear_user_carousels(update.effective_user.id)
         db.clear_recent_recommendations(update.effective_user.id)
-        # Confirmation is transient and intentionally not stored in the transcript.
-        await update.message.reply_text(f"🧹 Cleared {removed} stored messages. Starting fresh.")
+        prefs = user_data.get('preferences', {})
+        text = get_phrase(prefs, phrase_keys.CLEAR_CHAT, removed=removed)
+        keyboard = build_recommend_keyboard(prefs)
+        await update.message.reply_text(text, reply_markup=keyboard)
 
     async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Keep the stored transcript in sync when a user edits a message."""
