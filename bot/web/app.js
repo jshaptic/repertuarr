@@ -410,6 +410,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${Math.floor(seconds / 86400)}d left`;
     }
 
+    /** Render TMDB/TVDB IDs for a carousel or media-library row (Radarr/Sonarr or LLM shapes). */
+    function formatMediaIdsHtml(media) {
+        const tmdb = media.tmdbId || media.tmdb_id || '';
+        const tvdb = media.tvdbId || media.tvdb_id || '';
+        const parts = [];
+        if (tmdb) parts.push(`<span class="type-label">TMDB:</span> ${escapeHtml(String(tmdb))}`);
+        if (tvdb) parts.push(`<span class="type-label">TVDB:</span> ${escapeHtml(String(tvdb))}`);
+        return parts.length > 0 ? parts.join('<br>') : '<span class="pill pill-muted">—</span>';
+    }
+
     /** Open the shared modal showing the titles from a stored carousel. */
     function openCarouselModal(carousel) {
         const items = Array.isArray(carousel.items) ? carousel.items : [];
@@ -434,18 +444,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const title = media._display_title || media.title || '—';
                 const orig = media.original_title || '';
                 const year = media.year || '—';
-                const overview = media._display_overview || media.overview || '';
                 return `
                     <tr>
                         <td>${escapeHtml(title)}</td>
                         <td>${escapeHtml(orig || '—')}</td>
                         <td>${year}</td>
-                        <td class="overview-cell" title="${escapeHtml(overview)}">${escapeHtml(overview || '—')}</td>
+                        <td style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.4;">${formatMediaIdsHtml(media)}</td>
                     </tr>`;
             }).join('');
             pane.innerHTML = `
                 <table class="suggested-table">
-                    <thead><tr><th>Title</th><th>Original Title</th><th>Year</th><th>Overview</th></tr></thead>
+                    <thead><tr><th>Title</th><th>Original Title</th><th>Year</th><th>IDS</th></tr></thead>
                     <tbody>${tableRows}</tbody>
                 </table>`;
         }

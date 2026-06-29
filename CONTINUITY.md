@@ -2,13 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-29
-**Goal:** `[USER]` 2026-06-29 Link User Details Chat turns to the triggering bot session timeline.
-**Now:** `[CODE]` 2026-06-29 User chat messages with `session_id` render a `View session` action that opens a session dialog with the related timeline.
-**Next:** `[USER]` Optional browser smoke test in Admin UI: open a user Chat, click `View session`, confirm the dialog shows related AI/TMDB/service requests.
+**Goal:** `[USER]` 2026-06-29 Admin carousel titles modal shows TMDB/TVDB IDs instead of overview.
+**Now:** `[CODE]` 2026-06-29 `openCarouselModal` renders TMDB/TVDB column (Radarr/Sonarr + LLM field shapes); overview column removed; cache `app.js?v=36`.
+**Next:** `[USER]` Optional browser smoke test: Chat → View N titles → confirm IDs column.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[CODE]` 2026-06-29 Admin User Details Chat now shows `View session` on user messages with a `session_id`; click opens a wide session dialog using the existing session timeline renderer. Cache bumped to `app.js?v=35`, `styles.css?v=29`; diagnostics clean.
+- `[CODE]` 2026-06-29 Carousel titles modal: replaced Overview with TMDB/TVDB IDs (`formatMediaIdsHtml` handles `tmdbId`/`tvdbId` and `tmdb_id`/`tvdb_id`); cache `app.js?v=36`.
 - `[CODE]` 2026-06-29 Service API logging: `bot/service_request.py` wrapper; `bot/database/service_logs.py` (`ServiceLogMixin`, `service_api_logs`); wired in `jellyfin.py` + `telegram_bot.py`; `GET /admin/api/service-logs`; admin Logs tabs Media Management (Radarr/Sonarr) and Media Servers (Jellyfin); session timeline pills; tests in `tests/test_service_request.py`.
 - `[CODE]` 2026-06-28 Recommendation prompt restructure: optional `recommendation_sources[].name` with generated fallback labels; grouped TMDB candidate fetch; new `bot/recommendation_prompt.py` builds system/profile/feedback/request OpenAI messages; `recommendation.mustache` renders source headers + TMDB overviews.
 - `[CODE]` 2026-06-29 Recommendation prompt follow-up: moved user name/preferences/guidelines into the RECOMMEND system message and named Lena's discover sources in `config.yaml`.
