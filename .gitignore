@@ -34,10 +34,8 @@ venv.bak/
 
 # Project specific
 config.yaml
-/data/
 *.sqlite3
 *.db
-*.pickle
 
 # IDE / Editor
 .idea/

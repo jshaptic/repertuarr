@@ -21,6 +21,12 @@ import chevron
 import os
 from bot.models import IntentResponse, RecommendationResponse, InquiryResponse
 from bot.database import Database
+from bot.carousel_feedback_buttons import (
+    STYLE_DANGER,
+    STYLE_PRIMARY,
+    STYLE_SUCCESS,
+    feedback_button,
+)
 from bot.phrases import keys as phrase_keys
 from bot.phrases import get_phrase, build_recommend_keyboard, get_jellyfin_play_label, is_recommend_trigger
 from bot.phrases.replies import reply_bot_text, send_thinking_message
@@ -325,7 +331,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         prefs = _user_prefs(context)
         user_lang = prefs.get('language', 'en')
-        await send_thinking_message(update, prefs)
+        await send_thinking_message(update, prefs, phrase_keys.THINKING_INQUIRY)
         
         try:
             # Build messages: System + History
@@ -390,7 +396,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         prefs = _user_prefs(context)
         user_lang = prefs.get('language', 'en')
-        await send_thinking_message(update, prefs)
+        await send_thinking_message(update, prefs, phrase_keys.THINKING_RECOMMEND)
         
         try:
              user_info = context.user_data.get('user_info', {})
@@ -510,6 +516,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 add_to_history=add_to_history, context=context,
             )
             return
+
+        await send_thinking_message(update, prefs, phrase_keys.THINKING_ADD_MEDIA)
 
         logger.info(f"Initiating search for '{title}' as {media_type}")
 
@@ -642,10 +650,6 @@ def register_handlers(app: Application, config: dict, auth_func):
             
         return f"{prefix}{title}"
 
-    def selected_button_label(selected: bool, label: str) -> str:
-        """Telegram cannot style buttons, so selected state is shown in-label."""
-        return f"☑️{label}" if selected else label
-
     async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list, idx: int, type_: str, is_new: bool = False):
         """Render the card at results[idx]. Mutates results in place on lazy
         metadata loads; the caller is responsible for persisting carousel state.
@@ -764,10 +768,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         liked_data = make_safe_callback_data("LIKED", type_, str(id_val or "0"), t)
 
         rows = [[
-            InlineKeyboardButton(selected_button_label(excluded, "🙈"), callback_data=ignore_data),
-            InlineKeyboardButton(selected_button_label(watched and feedback is None, "👁️"), callback_data=watched_data),
-            InlineKeyboardButton(selected_button_label(watched and feedback == 'dislike', "👁️👎"), callback_data=disliked_data),
-            InlineKeyboardButton(selected_button_label(watched and feedback == 'like', "👁️👍"), callback_data=liked_data),
+            feedback_button("🙈", ignore_data, selected=excluded, selected_style=STYLE_PRIMARY),
+            feedback_button("👁️", watched_data, selected=watched and feedback is None, selected_style=STYLE_PRIMARY),
+            feedback_button("👁️👎", disliked_data, selected=watched and feedback == "dislike", selected_style=STYLE_DANGER),
+            feedback_button("👁️👍", liked_data, selected=watched and feedback == "like", selected_style=STYLE_SUCCESS),
         ]]
 
         # Second row: Add button only

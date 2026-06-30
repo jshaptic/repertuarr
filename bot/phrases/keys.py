@@ -7,7 +7,9 @@ Centralizes string identifiers used by get_phrase() and YAML data files.
 # Onboarding / flow
 WELCOME = "welcome"
 RECOMMEND_BUTTON = "recommend_button"
-THINKING = "thinking"
+THINKING_INQUIRY = "thinking_inquiry"
+THINKING_RECOMMEND = "thinking_recommend"
+THINKING_ADD_MEDIA = "thinking_add_media"
 UNKNOWN_INTENT = "unknown_intent"
 REQUEST_ERROR = "request_error"
 LLM_NOT_CONFIGURED = "llm_not_configured"
@@ -30,7 +32,6 @@ ARR_ERROR = "arr_error"
 CAROUSEL_FOOTER = "carousel_footer"
 INLINE_ADD = "inline_add"
 INLINE_ADDED = "inline_added"
-INLINE_DOWNLOADING = "inline_downloading"
 CAROUSEL_EXPIRED = "carousel_expired"
 UNAUTHORIZED = "unauthorized"
 FEEDBACK_WATCHED = "feedback_watched"
@@ -61,14 +62,16 @@ DOWNLOAD_READY_NO_URL = "download_ready_no_url"
 DOWNLOAD_FAILED = "download_failed"
 DOWNLOAD_UNAVAILABLE = "download_unavailable"
 
-STYLE_SPECIFIC_KEYS = frozenset({THINKING})
+STYLE_SPECIFIC_KEYS = frozenset({
+    THINKING_INQUIRY,
+    THINKING_RECOMMEND,
+    THINKING_ADD_MEDIA,
+})
 
 SUPPORTED_STYLES = (
     "default",
     "casual",
     "warm",
-    "witty",
-    "cinephile",
     "sarcastic",
     "wizarding",
 )

@@ -42,23 +42,43 @@ def test_english_shared_keys_have_one_variant():
         assert len(variants) == 1, key
 
 
+THINKING_KEYS = (
+    phrase_keys.THINKING_INQUIRY,
+    phrase_keys.THINKING_RECOMMEND,
+    phrase_keys.THINKING_ADD_MEDIA,
+)
+
+
 def test_english_thinking_styles_have_three_variants():
     catalog = _en_catalog()
     for style in SUPPORTED_STYLES:
-        variants = catalog["styles"][style]["thinking"]
-        assert len(variants) >= 3, style
+        for key in THINKING_KEYS:
+            variants = catalog["styles"][style][key]
+            assert len(variants) >= 3, f"{style}/{key}"
 
 
 def test_thinking_resolves_for_all_languages_and_styles():
     for lang in SUPPORTED_LANGUAGES:
         for style in SUPPORTED_STYLES:
-            prefs = {"language": lang, "bot_style": style}
-            text = get_phrase(prefs, phrase_keys.THINKING)
-            assert text
-            variants = resolve_variants(lang, style, phrase_keys.THINKING)
-            assert len(variants) >= 3, f"{lang}/{style}"
-            if lang != "en":
-                assert text in variants, f"{lang}/{style} fell back to English"
+            for key in THINKING_KEYS:
+                prefs = {"language": lang, "bot_style": style}
+                text = get_phrase(prefs, key)
+                assert text
+                variants = resolve_variants(lang, style, key)
+                assert len(variants) >= 3, f"{lang}/{style}/{key}"
+                if lang != "en":
+                    assert text in variants, f"{lang}/{style}/{key} fell back to English"
+
+
+def test_intent_thinking_keys_differ():
+    prefs = {"language": "en", "bot_style": "default"}
+    with patch("bot.phrases.resolver.random.choice", side_effect=lambda xs: xs[0]):
+        inquiry = get_phrase(prefs, phrase_keys.THINKING_INQUIRY)
+        recommend = get_phrase(prefs, phrase_keys.THINKING_RECOMMEND)
+        add_media = get_phrase(prefs, phrase_keys.THINKING_ADD_MEDIA)
+    assert inquiry != recommend
+    assert inquiry != add_media
+    assert recommend != add_media
 
 
 def test_recommend_button_resolves_for_all_languages():
@@ -82,9 +102,9 @@ def test_is_recommend_trigger_matches_all_language_variants():
 
 def test_unknown_style_falls_back_to_default():
     prefs = {"language": "en", "bot_style": "nonexistent"}
-    default_variants = set(resolve_variants("en", "default", phrase_keys.THINKING))
+    default_variants = set(resolve_variants("en", "default", phrase_keys.THINKING_RECOMMEND))
     with patch("bot.phrases.resolver.random.choice", side_effect=lambda xs: xs[0]):
-        text = get_phrase(prefs, phrase_keys.THINKING)
+        text = get_phrase(prefs, phrase_keys.THINKING_RECOMMEND)
     assert text in default_variants
 
 
@@ -97,7 +117,7 @@ def test_missing_lang_key_falls_back_to_english_for_non_thinking():
 
 def test_random_variant_selection():
     prefs = {"language": "en", "bot_style": "default"}
-    seen = {get_phrase(prefs, phrase_keys.THINKING) for _ in range(30)}
+    seen = {get_phrase(prefs, phrase_keys.THINKING_RECOMMEND) for _ in range(30)}
     assert len(seen) >= 2
 
 

@@ -2,13 +2,13 @@
 
 ## Snapshot
 **Date:** 2026-06-30
-**Goal:** `[USER]` 2026-06-29 Send separate request lifecycle messages for title requests/webhooks instead of changing the carousel button after Add.
-**Now:** `[CODE]` 2026-06-30 Merged `play_button` into `download_ready`; carousel reuses link label via `get_jellyfin_play_label()`.
-**Next:** `[USER]` Restart the bot to load notification copy changes.
+**Goal:** `[USER]` 2026-06-30 Intent-specific thinking phrases; remove witty/cinephile styles.
+**Now:** `[CODE]` 2026-06-30 Three thinking keys per intent (`thinking_inquiry`, `thinking_recommend`, `thinking_add_media`); 5 styles remain.
+**Next:** `[USER]` Restart the bot to load new thinking phrases.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[CODE]` 2026-06-30 Fixed RECOMMEND error `'RecommendationItem' object has no attribute 'get'`: `record_recent_recommendations` uses type-safe field access; carousel id extraction handles Pydantic `tmdb_id`; test for mixed None TMDB IDs.
+- `[CODE]` 2026-06-30 Intent-specific thinking phrases: `thinking_inquiry`, `thinking_recommend`, `thinking_add_media` per style; removed witty/cinephile; ADD_MEDIA shows thinking message; non-en catalogs in `lang_overlay_data.py` + `build_lang_yamls.py`.
 - `[CODE]` 2026-06-30 Fixed `request_queued` Telegram timeouts: Arr add moved to `asyncio.to_thread`, lifecycle sends retry transient Telegram errors, `queued_notified_at` tracks delivery, Grab/monitor backfill missed queued messages, ApplicationBuilder timeouts raised to 30s. `poetry run pytest` passed 77 tests with existing sqlite datetime warnings.
 - `[CODE]` 2026-06-29 Request status messages: added `request_queued` and `download_started` phrases (en/ru); Add success sends a normal queued chat message instead of editing the inline button; Radarr/Sonarr Grab webhook and monitor queue detection send download-started before marking grabbed; lifecycle/phrase tests updated; `poetry run pytest` passed 72 tests with existing sqlite datetime warnings.
 - `[CODE]` 2026-06-29 Download failure detection: `media_requests` now stores Arr service/instance/id/download lifecycle fields; Add flow records created Arr IDs and recovers when Arr creates an item but the POST times out; webhooks acknowledge `MovieAdded`/`SeriesAdd`, mark `Grab`, and notify/mark `ManualInteractionRequired`; `download_monitor.py` polls active requests for no acceptable candidates and blocked queues; English/Russian failure phrases added; `tests/test_download_failure_detection.py`; `pyproject.toml` sets pytest `pythonpath`; `poetry run pytest` passed 70 tests with existing sqlite datetime warnings.
@@ -24,6 +24,7 @@
 ## Working Set
 - `bot/database/__init__.py`
 - `bot/telegram_bot.py`
+- `bot/carousel_feedback_buttons.py`
 - `bot/webhook.py`
 - `bot/webhook_events.py`
 - `bot/download_monitor.py`
@@ -41,5 +42,5 @@
 - `D018 ACTIVE:` `[USER]` 2026-06-29 Successful Add keeps the carousel button/markup unchanged; request progress is communicated with separate Telegram messages (`request_queued`, `download_started`, then ready/failure/unavailable).
 - `D016 ACTIVE:` `[CODE]` 2026-06-29 Recommendation exclusions apply at TMDB candidate pre-filter only (IDs + titles, per-source backfill); LLM output is shown as-is with no post-filter.
 - `D015 ACTIVE:` `[CODE]` 2026-06-29 Feedback state is one row per normalized content key with `watched` boolean, nullable `feedback` (`like|dislike`), and `excluded` boolean; legacy `feedback_type` rows migrate on DB init.
-- `D014 ACTIVE:` `[CODE]` 2026-06-29 Bot hardcoded copy lives in `bot/phrases/data/*.yaml`; `preferences.bot_style` selects tone (`default|casual|warm|witty|cinephile|sarcastic|wizarding`); `thinking` is style-specific; other keys use shared phrases with English fallback for non-en langs.
+- `D014 ACTIVE:` `[CODE]` 2026-06-30 Bot hardcoded copy lives in `bot/phrases/data/*.yaml`; `preferences.bot_style` selects tone (`default|casual|warm|sarcastic|wizarding`); intent-specific thinking keys (`thinking_inquiry`, `thinking_recommend`, `thinking_add_media`) are style-specific; other keys use shared phrases with English fallback for non-en langs.
 - `D013 ACTIVE:` `[CODE]` 2026-06-29 Recommendation source names are optional; prompt display uses configured `name` or generated labels like `Popular movies`/`Top rated TV shows`. RECOMMEND uses separate OpenAI input messages: system contains stable instructions plus user name/preferences/guidelines; user messages contain feedback history and current request/candidates.

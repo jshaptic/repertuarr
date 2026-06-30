@@ -34,10 +34,8 @@ async def reply_bot_text(
     return sent
 
 
-async def send_thinking_message(update: Update, prefs: dict) -> None:
+async def send_thinking_message(update: Update, prefs: dict, key: str) -> None:
     """Send a transient thinking phrase (not stored in chat history)."""
-    from bot.phrases import keys
-
-    text = get_phrase(prefs, keys.THINKING)
+    text = get_phrase(prefs, key)
     keyboard = build_recommend_keyboard(prefs)
     await update.message.reply_text(text, reply_markup=keyboard)

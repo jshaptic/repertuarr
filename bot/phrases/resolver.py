@@ -55,7 +55,7 @@ def get_phrase(
 ) -> str:
     """
     Return a random variant for the given phrase key, formatted with kwargs.
-    Style-specific keys (e.g. thinking) use bot_style; others use shared phrases.
+    Style-specific keys (e.g. thinking_inquiry) use bot_style; others use shared phrases.
     """
     resolved_lang = lang or _user_lang(prefs)
     resolved_style = style or _user_style(prefs)
