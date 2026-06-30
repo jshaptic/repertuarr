@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Suosittele mulle jotain
   download_ready:
-  - 🎉 *{title}* on valmis\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) on valmis! [▶️ Katso Jellyfinissä]({url})
   download_ready_no_url:
-  - 🎉 *{title}* on ladattu!
-  play_button:
-  - ▶️ Katso Jellyfinissä
+  - 🎉 *{title}* ({type}) on ladattu!

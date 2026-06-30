@@ -13,6 +13,16 @@ from typing import Any, Iterable, List, Set
 logger = logging.getLogger(__name__)
 
 
+def _carousel_item_field(item: Any, name: str, *dict_aliases: str) -> Any:
+    """Read a field from a carousel item (Pydantic model or API dict)."""
+    if isinstance(item, dict):
+        for key in (name, *dict_aliases):
+            if key in item:
+                return item[key]
+        return None
+    return getattr(item, name, None)
+
+
 class RecentRecommendationsMixin:
     """Recent recommendation cooldown CRUD — mixed into Database."""
 
@@ -50,11 +60,11 @@ class RecentRecommendationsMixin:
         now = datetime.now().isoformat()
         rows = []
         for item in items:
-            title = getattr(item, 'title', None) or item.get('title')
+            title = _carousel_item_field(item, 'title')
             if not title:
                 continue
-            original_title = getattr(item, 'original_title', None) or item.get('original_title')
-            tmdb_id = getattr(item, 'tmdb_id', None) or item.get('tmdb_id')
+            original_title = _carousel_item_field(item, 'original_title')
+            tmdb_id = _carousel_item_field(item, 'tmdb_id', 'tmdbId')
             rows.append((
                 user_id,
                 title,

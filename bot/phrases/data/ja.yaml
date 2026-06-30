@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - 何かおすすめして
   download_ready:
-  - 🎉 *{title}* の準備ができました\！ [{play_label}]({url})
+  - 🎉 *{title}* ({type}) の準備ができました\！ [▶️ Jellyfinで視聴]({url})
   download_ready_no_url:
-  - 🎉 *{title}* がダウンロードされました！
-  play_button:
-  - ▶️ Jellyfinで視聴
+  - 🎉 *{title}* ({type}) がダウンロードされました！

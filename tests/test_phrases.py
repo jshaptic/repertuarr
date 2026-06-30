@@ -11,7 +11,7 @@ import yaml
 from bot.phrases import keys as phrase_keys
 from bot.phrases.catalog import load_catalog, resolve_variants
 from bot.phrases.keys import SUPPORTED_LANGUAGES, SUPPORTED_STYLES
-from bot.phrases.resolver import get_phrase, is_recommend_trigger
+from bot.phrases.resolver import get_jellyfin_play_label, get_phrase, is_recommend_trigger
 
 
 def _en_catalog():
@@ -105,3 +105,51 @@ def test_format_placeholders():
     prefs = {"language": "en", "bot_style": "default"}
     text = get_phrase(prefs, phrase_keys.CLEAR_CHAT, removed=5)
     assert "5" in text
+
+
+def test_request_lifecycle_placeholders():
+    prefs = {"language": "en", "bot_style": "default"}
+    queued = get_phrase(
+        prefs, phrase_keys.REQUEST_QUEUED, title="Example Movie", type="Movie",
+    )
+    started = get_phrase(
+        prefs, phrase_keys.DOWNLOAD_STARTED, title="Example Movie", type="Movie",
+    )
+
+    assert "Example Movie" in queued
+    assert "(Movie)" in queued
+    assert "Example Movie" in started
+    assert "(Movie)" in started
+    assert "✅" not in queued
+    assert "⬇️" not in started
+
+
+def test_download_failure_phrases_hide_arr_details():
+    prefs = {"language": "en", "bot_style": "default"}
+    failed = get_phrase(
+        prefs, phrase_keys.DOWNLOAD_FAILED, title="Example Movie", type="Movie",
+    )
+    unavailable = get_phrase(
+        prefs, phrase_keys.DOWNLOAD_UNAVAILABLE, title="Example Show", type="Show",
+    )
+
+    assert "(Movie)" in failed
+    assert "(Show)" in unavailable
+    assert "Radarr" not in failed
+    assert "Sonarr" not in failed
+    assert "Wanted" not in unavailable
+    assert "server owner" in failed.lower()
+    assert "server owner" in unavailable.lower()
+
+
+def test_jellyfin_play_label_comes_from_download_ready():
+    prefs = {"language": "en", "bot_style": "default"}
+    assert get_jellyfin_play_label(prefs) == "Play on Jellyfin"
+    ready = get_phrase(
+        prefs,
+        phrase_keys.DOWNLOAD_READY,
+        title="Example Movie",
+        type="Movie",
+        url="https://jellyfin.example/movie",
+    )
+    assert "[Play on Jellyfin](https://jellyfin.example/movie)" in ready

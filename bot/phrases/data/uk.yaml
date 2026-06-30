@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Порекомендуй щось
   download_ready:
-  - 🎉 *{title}* готовий\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) готовий! [▶️ Дивитись у Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* завантажено!
-  play_button:
-  - ▶️ Дивитись у Jellyfin
+  - 🎉 *{title}* ({type}) завантажено!

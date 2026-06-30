@@ -2,7 +2,7 @@
 Per-language phrase overlays for non-English catalogs.
 
 Supplies style-specific thinking variants and shared webhook/UI strings
-(recommend_button, download_ready, play_button) used when generating
+(recommend_button, download_ready) used when generating
 bot/phrases/data/{lang}.yaml files. English (en) is the canonical base
 catalog and is not included here.
 """
@@ -45,13 +45,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Recomiéndame algo",
             ],
             "download_ready": [
-                "🎉 *{title}* está lista\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) está lista! [▶️ Ver en Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* se ha descargado!",
-            ],
-            "play_button": [
-                "▶️ Ver en Jellyfin",
+                "🎉 *{title}* ({type}) se ha descargado!",
             ],
         },
     },
@@ -88,13 +85,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Recommande-moi quelque chose",
             ],
             "download_ready": [
-                "🎉 *{title}* est prêt \\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) est prêt ! [▶️ Regarder sur Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* a été téléchargé !",
-            ],
-            "play_button": [
-                "▶️ Regarder sur Jellyfin",
+                "🎉 *{title}* ({type}) a été téléchargé !",
             ],
         },
     },
@@ -131,13 +125,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Empfiehl mir etwas",
             ],
             "download_ready": [
-                "🎉 *{title}* ist bereit\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) ist bereit! [▶️ Auf Jellyfin ansehen]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* wurde heruntergeladen!",
-            ],
-            "play_button": [
-                "▶️ Auf Jellyfin ansehen",
+                "🎉 *{title}* ({type}) wurde heruntergeladen!",
             ],
         },
     },
@@ -174,13 +165,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Consigliami qualcosa",
             ],
             "download_ready": [
-                "🎉 *{title}* è pronto\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) è pronto! [▶️ Guarda su Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* è stato scaricato!",
-            ],
-            "play_button": [
-                "▶️ Guarda su Jellyfin",
+                "🎉 *{title}* ({type}) è stato scaricato!",
             ],
         },
     },
@@ -217,13 +205,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Me recomenda algo",
             ],
             "download_ready": [
-                "🎉 *{title}* está pronto\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) está pronto! [▶️ Assistir no Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* foi baixado!",
-            ],
-            "play_button": [
-                "▶️ Assistir no Jellyfin",
+                "🎉 *{title}* ({type}) foi baixado!",
             ],
         },
     },
@@ -260,13 +245,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Порекомендуй что-нибудь",
             ],
             "download_ready": [
-                "🎉 *{title}* готов\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) готов! [▶️ Смотреть в Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* загружен!",
-            ],
-            "play_button": [
-                "▶️ Смотреть в Jellyfin",
+                "🎉 *{title}* ({type}) загружен!",
             ],
         },
     },
@@ -303,13 +285,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "何かおすすめして",
             ],
             "download_ready": [
-                "🎉 *{title}* の準備ができました\\！ [{play_label}]({url})",
+                "🎉 *{title}* ({type}) の準備ができました\！ [▶️ Jellyfinで視聴]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* がダウンロードされました！",
-            ],
-            "play_button": [
-                "▶️ Jellyfinで視聴",
+                "🎉 *{title}* ({type}) がダウンロードされました！",
             ],
         },
     },
@@ -346,13 +325,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "给我推荐点什么",
             ],
             "download_ready": [
-                "🎉 *{title}* 已就绪\\！ [{play_label}]({url})",
+                "🎉 *{title}* ({type}) 已就绪\！ [▶️ 在Jellyfin上观看]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* 已下载！",
-            ],
-            "play_button": [
-                "▶️ 在Jellyfin上观看",
+                "🎉 *{title}* ({type}) 已下载！",
             ],
         },
     },
@@ -389,13 +365,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "뭔가 추천해줘",
             ],
             "download_ready": [
-                "🎉 *{title}* 준비 완료\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) 준비 완료! [▶️ Jellyfin에서 시청]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* 다운로드 완료!",
-            ],
-            "play_button": [
-                "▶️ Jellyfin에서 시청",
+                "🎉 *{title}* ({type}) 다운로드 완료!",
             ],
         },
     },
@@ -432,13 +405,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "اقترح علي شيئًا",
             ],
             "download_ready": [
-                "🎉 *{title}* جاهز\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) جاهز! [▶️ شاهد على Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 تم تحميل *{title}*!",
-            ],
-            "play_button": [
-                "▶️ شاهد على Jellyfin",
+                "🎉 تم تحميل *{title}* ({type})!",
             ],
         },
     },
@@ -475,13 +445,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "मुझे कुछ सुझाओ",
             ],
             "download_ready": [
-                "🎉 *{title}* तैयार है\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) तैयार है! [▶️ Jellyfin पर देखें]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* डाउनलोड हो गया!",
-            ],
-            "play_button": [
-                "▶️ Jellyfin पर देखें",
+                "🎉 *{title}* ({type}) डाउनलोड हो गया!",
             ],
         },
     },
@@ -518,13 +485,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Bana bir şey öner",
             ],
             "download_ready": [
-                "🎉 *{title}* hazır\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) hazır! [▶️ Jellyfin'de izle]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* indirildi!",
-            ],
-            "play_button": [
-                "▶️ Jellyfin'de izle",
+                "🎉 *{title}* ({type}) indirildi!",
             ],
         },
     },
@@ -561,13 +525,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Poleć mi coś",
             ],
             "download_ready": [
-                "🎉 *{title}* jest gotowy\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) jest gotowy! [▶️ Oglądaj na Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* został pobrany!",
-            ],
-            "play_button": [
-                "▶️ Oglądaj na Jellyfin",
+                "🎉 *{title}* ({type}) został pobrany!",
             ],
         },
     },
@@ -604,13 +565,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Beveel me iets aan",
             ],
             "download_ready": [
-                "🎉 *{title}* is klaar\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) is klaar! [▶️ Bekijk op Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* is gedownload!",
-            ],
-            "play_button": [
-                "▶️ Bekijk op Jellyfin",
+                "🎉 *{title}* ({type}) is gedownload!",
             ],
         },
     },
@@ -647,13 +605,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Rekommendera något åt mig",
             ],
             "download_ready": [
-                "🎉 *{title}* är redo\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) är redo! [▶️ Titta på Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* har laddats ner!",
-            ],
-            "play_button": [
-                "▶️ Titta på Jellyfin",
+                "🎉 *{title}* ({type}) har laddats ner!",
             ],
         },
     },
@@ -690,13 +645,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Anbefal mig noget",
             ],
             "download_ready": [
-                "🎉 *{title}* er klar\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) er klar! [▶️ Se på Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* er blevet downloadet!",
-            ],
-            "play_button": [
-                "▶️ Se på Jellyfin",
+                "🎉 *{title}* ({type}) er blevet downloadet!",
             ],
         },
     },
@@ -733,13 +685,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Anbefal meg noe",
             ],
             "download_ready": [
-                "🎉 *{title}* er klar\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) er klar! [▶️ Se på Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* er lastet ned!",
-            ],
-            "play_button": [
-                "▶️ Se på Jellyfin",
+                "🎉 *{title}* ({type}) er lastet ned!",
             ],
         },
     },
@@ -776,13 +725,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Suosittele mulle jotain",
             ],
             "download_ready": [
-                "🎉 *{title}* on valmis\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) on valmis! [▶️ Katso Jellyfinissä]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* on ladattu!",
-            ],
-            "play_button": [
-                "▶️ Katso Jellyfinissä",
+                "🎉 *{title}* ({type}) on ladattu!",
             ],
         },
     },
@@ -819,13 +765,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Doporuč mi něco",
             ],
             "download_ready": [
-                "🎉 *{title}* je připraven\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) je připraven! [▶️ Sledovat na Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* byl stažen!",
-            ],
-            "play_button": [
-                "▶️ Sledovat na Jellyfin",
+                "🎉 *{title}* ({type}) byl stažen!",
             ],
         },
     },
@@ -862,13 +805,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Πρότεινέ μου κάτι",
             ],
             "download_ready": [
-                "🎉 *{title}* είναι έτοιμο\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) είναι έτοιμο! [▶️ Δες στο Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 Το *{title}* κατέβηκε!",
-            ],
-            "play_button": [
-                "▶️ Δες στο Jellyfin",
+                "🎉 Το *{title}* ({type}) κατέβηκε!",
             ],
         },
     },
@@ -905,13 +845,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "המלץ לי על משהו",
             ],
             "download_ready": [
-                "🎉 *{title}* מוכן\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) מוכן! [▶️ צפה ב-Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* הורד!",
-            ],
-            "play_button": [
-                "▶️ צפה ב-Jellyfin",
+                "🎉 *{title}* ({type}) הורד!",
             ],
         },
     },
@@ -948,13 +885,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "แนะนำอะไรให้หน่อย",
             ],
             "download_ready": [
-                "🎉 *{title}* พร้อมแล้ว\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) พร้อมแล้ว! [▶️ ดูบน Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* ดาวน์โหลดเรียบร้อย!",
-            ],
-            "play_button": [
-                "▶️ ดูบน Jellyfin",
+                "🎉 *{title}* ({type}) ดาวน์โหลดเรียบร้อย!",
             ],
         },
     },
@@ -991,13 +925,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Gợi ý cho tôi cái gì đó",
             ],
             "download_ready": [
-                "🎉 *{title}* đã sẵn sàng\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) đã sẵn sàng! [▶️ Xem trên Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* đã được tải xuống!",
-            ],
-            "play_button": [
-                "▶️ Xem trên Jellyfin",
+                "🎉 *{title}* ({type}) đã được tải xuống!",
             ],
         },
     },
@@ -1034,13 +965,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Rekomendasikan sesuatu",
             ],
             "download_ready": [
-                "🎉 *{title}* sudah siap\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) sudah siap! [▶️ Tonton di Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* sudah diunduh!",
-            ],
-            "play_button": [
-                "▶️ Tonton di Jellyfin",
+                "🎉 *{title}* ({type}) sudah diunduh!",
             ],
         },
     },
@@ -1077,13 +1005,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Cadangkan sesuatu untuk saya",
             ],
             "download_ready": [
-                "🎉 *{title}* sudah sedia\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) sudah sedia! [▶️ Tonton di Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* telah dimuat turun!",
-            ],
-            "play_button": [
-                "▶️ Tonton di Jellyfin",
+                "🎉 *{title}* ({type}) telah dimuat turun!",
             ],
         },
     },
@@ -1120,13 +1045,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Порекомендуй щось",
             ],
             "download_ready": [
-                "🎉 *{title}* готовий\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) готовий! [▶️ Дивитись у Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* завантажено!",
-            ],
-            "play_button": [
-                "▶️ Дивитись у Jellyfin",
+                "🎉 *{title}* ({type}) завантажено!",
             ],
         },
     },
@@ -1163,13 +1085,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Recomandă-mi ceva",
             ],
             "download_ready": [
-                "🎉 *{title}* este gata\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) este gata! [▶️ Vizionează pe Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* a fost descărcat!",
-            ],
-            "play_button": [
-                "▶️ Vizionează pe Jellyfin",
+                "🎉 *{title}* ({type}) a fost descărcat!",
             ],
         },
     },
@@ -1206,13 +1125,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Ajánlj valamit",
             ],
             "download_ready": [
-                "🎉 *{title}* kész\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) kész! [▶️ Nézd meg a Jellyfin-en]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* letöltve!",
-            ],
-            "play_button": [
-                "▶️ Nézd meg a Jellyfin-en",
+                "🎉 *{title}* ({type}) letöltve!",
             ],
         },
     },
@@ -1249,13 +1165,10 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
                 "Odporuč mi niečo",
             ],
             "download_ready": [
-                "🎉 *{title}* je pripravený\\! [{play_label}]({url})",
+                "🎉 *{title}* ({type}) je pripravený! [▶️ Pozrieť na Jellyfin]({url})",
             ],
             "download_ready_no_url": [
-                "🎉 *{title}* bol stiahnutý!",
-            ],
-            "play_button": [
-                "▶️ Pozrieť na Jellyfin",
+                "🎉 *{title}* ({type}) bol stiahnutý!",
             ],
         },
     },

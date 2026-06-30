@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Cadangkan sesuatu untuk saya
   download_ready:
-  - 🎉 *{title}* sudah sedia\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) sudah sedia! [▶️ Tonton di Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* telah dimuat turun!
-  play_button:
-  - ▶️ Tonton di Jellyfin
+  - 🎉 *{title}* ({type}) telah dimuat turun!

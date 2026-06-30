@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Rekommendera något åt mig
   download_ready:
-  - 🎉 *{title}* är redo\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) är redo! [▶️ Titta på Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* har laddats ner!
-  play_button:
-  - ▶️ Titta på Jellyfin
+  - 🎉 *{title}* ({type}) har laddats ner!

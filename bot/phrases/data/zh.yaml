@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - 给我推荐点什么
   download_ready:
-  - 🎉 *{title}* 已就绪\！ [{play_label}]({url})
+  - 🎉 *{title}* ({type}) 已就绪\！ [▶️ 在Jellyfin上观看]({url})
   download_ready_no_url:
-  - 🎉 *{title}* 已下载！
-  play_button:
-  - ▶️ 在Jellyfin上观看
+  - 🎉 *{title}* ({type}) 已下载！

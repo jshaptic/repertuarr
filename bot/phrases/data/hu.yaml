@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Ajánlj valamit
   download_ready:
-  - 🎉 *{title}* kész\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) kész! [▶️ Nézd meg a Jellyfin-en]({url})
   download_ready_no_url:
-  - 🎉 *{title}* letöltve!
-  play_button:
-  - ▶️ Nézd meg a Jellyfin-en
+  - 🎉 *{title}* ({type}) letöltve!

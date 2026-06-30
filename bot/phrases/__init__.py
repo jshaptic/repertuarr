@@ -5,6 +5,8 @@ Bot phrase catalog: localized, styled, randomly varied bot copy.
 from bot.phrases.keys import *
 from bot.phrases.resolver import (
     build_recommend_keyboard,
+    get_jellyfin_play_label,
+    get_media_type_label,
     get_phrase,
     get_recommend_button_label,
     is_recommend_trigger,
@@ -13,6 +15,8 @@ from bot.phrases.resolver import (
 
 __all__ = [
     "build_recommend_keyboard",
+    "get_jellyfin_play_label",
+    "get_media_type_label",
     "get_phrase",
     "get_recommend_button_label",
     "is_recommend_trigger",

@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - मुझे कुछ सुझाओ
   download_ready:
-  - 🎉 *{title}* तैयार है\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) तैयार है! [▶️ Jellyfin पर देखें]({url})
   download_ready_no_url:
-  - 🎉 *{title}* डाउनलोड हो गया!
-  play_button:
-  - ▶️ Jellyfin पर देखें
+  - 🎉 *{title}* ({type}) डाउनलोड हो गया!

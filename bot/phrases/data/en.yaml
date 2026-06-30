@@ -72,9 +72,7 @@ shared:
   arr_error:
   - ❌ Error communicating with {type}.
   carousel_footer:
-  - "({idx} of {total})"
-  play_button:
-  - ▶️ Play on Jellyfin
+  - ({idx} of {total})
   inline_add:
   - Add to library
   inline_added:
@@ -111,7 +109,20 @@ shared:
   - 'ℹ️ Sonarr: Not configured'
   clear_chat:
   - 🧹 Cleared {removed} stored messages. Starting fresh.
+  media_type_movie:
+  - Movie
+  media_type_show:
+  - Show
+  request_queued:
+  - '*{title}* ({type}) is queued. I''ll let you know when the download starts.'
+  download_started:
+  - '*{title}* ({type}) started downloading. I''ll let you know when it''s ready.'
   download_ready:
-  - 🎉 *{title}* is ready to watch\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) is ready to watch! [Play on Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* has been downloaded!
+  - 🎉 *{title}* ({type}) has been downloaded!
+  download_failed:
+  - ⚠️ *{title}* ({type}) was added, but needs manual help before it can finish the download. Please ask your server owner
+    for support.
+  download_unavailable:
+  - ⚠️ *{title}* ({type}) was added, but no suitable download could be found right now. Please ask your server owner for support.

@@ -3,6 +3,7 @@ import logging
 import yaml
 from telegram.ext import ApplicationBuilder
 from bot import telegram_bot
+from bot.download_monitor import start_download_monitor
 from bot.webhook import start_webhook_server
 from bot.tmdb import TmdbClient
 
@@ -30,7 +31,15 @@ async def run_telegram_bot(messenger_conf, bot_config, auth_func):
     # Persistence is intentionally disabled: chat transcript and carousel state
     # now live in the SQLite database (bot/database/chat.py), and per-request
     # state (user_info, session_id) is rebuilt on every update.
-    app = ApplicationBuilder().token(token).build()
+    app = (
+        ApplicationBuilder()
+        .token(token)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .build()
+    )
     db, jellyfin_client = telegram_bot.register_handlers(app, bot_config, auth_func)
 
     await app.initialize()
@@ -121,6 +130,7 @@ async def main():
         'webhook_port': bot_section.get('webhook_port', 8585),
         'recommendation_exclude_ttl_hours': int(ttl_hours),
         'recommendation_carousel_count': carousel_count,
+        'download_monitor': bot_section.get('download_monitor', {}),
         'llms': config.get('llms', []),
         'agent': config.get('agent', {}),
         'radarrs': radarrs_map,
@@ -138,6 +148,7 @@ async def main():
 
     app_telegram = None
     webhook_runner = None
+    download_monitor_task = None
 
     result = await run_telegram_bot(telegram_conf, bot_config, check_telegram_auth)
     if result:
@@ -148,6 +159,13 @@ async def main():
             config=bot_config,
             db=media_db,
             jellyfin_client=media_jellyfin,
+            bot_app=app_telegram,
+            users_config=users_list,
+            messenger_name=messenger_name,
+        )
+        download_monitor_task = start_download_monitor(
+            config=bot_config,
+            db=media_db,
             bot_app=app_telegram,
             users_config=users_list,
             messenger_name=messenger_name,
@@ -167,6 +185,12 @@ async def main():
         pass
     finally:
         logger.info("Stopping bot...")
+        if download_monitor_task:
+            download_monitor_task.cancel()
+            try:
+                await download_monitor_task
+            except asyncio.CancelledError:
+                logger.info("Download monitor stopped.")
         if webhook_runner:
             await webhook_runner.cleanup()
             logger.info("Webhook server stopped.")

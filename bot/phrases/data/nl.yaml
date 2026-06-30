@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Beveel me iets aan
   download_ready:
-  - 🎉 *{title}* is klaar\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) is klaar! [▶️ Bekijk op Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* is gedownload!
-  play_button:
-  - ▶️ Bekijk op Jellyfin
+  - 🎉 *{title}* ({type}) is gedownload!

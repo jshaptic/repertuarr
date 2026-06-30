@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Odporuč mi niečo
   download_ready:
-  - 🎉 *{title}* je pripravený\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) je pripravený! [▶️ Pozrieť na Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* bol stiahnutý!
-  play_button:
-  - ▶️ Pozrieť na Jellyfin
+  - 🎉 *{title}* ({type}) bol stiahnutý!

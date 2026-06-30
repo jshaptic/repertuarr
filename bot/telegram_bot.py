@@ -9,11 +9,11 @@ and manages callback queries for inline button interactions.
 """
 
 import logging
-import requests
 import json
 import time
 import re
 import uuid
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandler, filters, CallbackQueryHandler
 from openai import OpenAI
@@ -22,7 +22,7 @@ import os
 from bot.models import IntentResponse, RecommendationResponse, InquiryResponse
 from bot.database import Database
 from bot.phrases import keys as phrase_keys
-from bot.phrases import get_phrase, build_recommend_keyboard, is_recommend_trigger
+from bot.phrases import get_phrase, build_recommend_keyboard, get_jellyfin_play_label, is_recommend_trigger
 from bot.phrases.replies import reply_bot_text, send_thinking_message
 from bot.jellyfin import JellyfinClient
 from bot.session_context import set_session_id, reset_session_id
@@ -34,6 +34,8 @@ from bot.recommendation_prompt import (
     build_system_message,
 )
 from bot.recommendation_pool import resolve_recommendation_sources
+from bot.arr_add import ArrAddNotFoundError, ArrAlreadyManagedError, submit_arr_add
+from bot.telegram_notify import notify_request_queued
 logger = logging.getLogger(__name__)
 
 def load_prompt(prompt_config: dict, **kwargs):
@@ -154,6 +156,11 @@ def register_handlers(app: Application, config: dict, auth_func):
         name = user_info.get(arr_key, {}).get('name')
         instance = arr_map.get(name, {})
         return instance.get('url'), instance.get('key')
+
+    def resolve_arr_name(user_info: dict, media_type: str):
+        """Return the configured Radarr/Sonarr instance name for a user."""
+        arr_key = 'radarr' if media_type == 'movie' else 'sonarr'
+        return user_info.get(arr_key, {}).get('name')
 
     def _user_prefs(context: ContextTypes.DEFAULT_TYPE) -> dict:
         user_info = context.user_data.get('user_info', {})
@@ -662,7 +669,7 @@ def register_handlers(app: Application, config: dict, auth_func):
             lookup_title = item.get('original_title')  # Use original title for Radarr/Sonarr search
         else:
             # Pydantic model from recommendations
-            id_val = None  # LLM recommendations don't have IDs yet
+            id_val = getattr(item, 'tmdb_id', None) if type_ == 'movie' else None
             t = item.title
             y = item.year
             overview = item.overview
@@ -720,8 +727,11 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Row 1: feedback toggles
         # Row 2: add/download state
         # Row 3: carousel navigation
-        id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
-        
+        if isinstance(item, dict):
+            id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
+        else:
+            id_val = getattr(item, 'tmdb_id', None) if type_ == 'movie' else None
+
         # Check if item is already available
         jf_url = None
         already_available = False
@@ -734,7 +744,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 if jf_url:
                     already_available = True
             # Fallback: check if already managed by Radarr/Sonarr (id > 0)
-            if not already_available and item.get('id', 0) > 0:
+            arr_id = item.get('id', 0) if isinstance(item, dict) else 0
+            if not already_available and arr_id > 0:
                 already_available = True
         
         feedback_content_id = db.normalize_content_id(type_, str(id_val or "0"), t)
@@ -780,7 +791,7 @@ def register_handlers(app: Application, config: dict, auth_func):
         rows.append(nav_row)
 
         if jf_url:
-            play_label = get_phrase(prefs, phrase_keys.PLAY_BUTTON)
+            play_label = get_jellyfin_play_label(prefs)
             rows.append([InlineKeyboardButton(play_label, url=jf_url)])
             
         inline_markup = InlineKeyboardMarkup(rows)
@@ -976,161 +987,88 @@ def register_handlers(app: Application, config: dict, auth_func):
                  await query.answer(get_phrase(prefs, phrase_keys.NO_RADARR), show_alert=True)
                  return
              quality_profile = user_info.get('radarr', {}).get('quality_profile')
-             await perform_add(query, id_val, url, key, 'movie', user_id, quality_profile, prefs)
+             arr_instance = resolve_arr_name(user_info, 'movie')
+             await perform_add(query, id_val, url, key, 'movie', user_id, quality_profile, prefs, arr_instance)
         else:
              url, key = resolve_arr(user_info, 'series')
              if not url:
                  await query.answer(get_phrase(prefs, phrase_keys.NO_SONARR), show_alert=True)
                  return
              quality_profile = user_info.get('sonarr', {}).get('quality_profile')
-             await perform_add(query, id_val, url, key, 'series', user_id, quality_profile, prefs)
+             arr_instance = resolve_arr_name(user_info, 'series')
+             await perform_add(query, id_val, url, key, 'series', user_id, quality_profile, prefs, arr_instance)
 
-    async def perform_add(query, id_val: str, base_url: str, api_key: str, type_: str, user_id: int = None, quality_profile: str = None, prefs: dict = None):
-        endpoint = "movie" if type_ == "movie" else "series"
-        lookup_endpoint = f"{base_url}/api/v3/{endpoint}/lookup"
-        add_endpoint = f"{base_url}/api/v3/{endpoint}"
-        
-        # Determine strict lookup term
-        # Radarr: tmdb:<id>
-        # Sonarr: tvdb:<id>
-        term = f"tmdb:{id_val}" if type_ == 'movie' else f"tvdb:{id_val}"
-        
+    async def perform_add(query, id_val: str, base_url: str, api_key: str, type_: str, user_id: int = None, quality_profile: str = None, prefs: dict = None, arr_instance: str = None):
         try:
-            logger.info(f"Looking up item by ID: {term} in {base_url}")
-            # 1. Lookup to get full payload
-            params = {'term': term}
-            resp_lookup = make_service_request(
-                db, arr_service(type_), 'GET', lookup_endpoint,
-                headers={'X-Api-Key': api_key}, params=params,
+            added_item = await asyncio.to_thread(
+                submit_arr_add,
+                db,
+                type_,
+                id_val,
+                base_url,
+                api_key,
+                quality_profile,
             )
-            resp_lookup.raise_for_status()
-            results = resp_lookup.json()
-            
-            if not results:
-                logger.error("Lookup by ID returned no results.")
-                add_not_found = get_phrase(prefs or {}, phrase_keys.ADD_NOT_FOUND)
-                await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_not_found}", parse_mode='Markdown')
-                return
-            
-            candidate = results[0]
-            
-            # Check existing
-            if candidate.get('id', 0) > 0: # Already managed
-                 already_in_library = get_phrase(prefs or {}, phrase_keys.ALREADY_IN_LIBRARY)
-                 await query.edit_message_caption(caption=f"{query.message.caption}\n\n{already_in_library}", parse_mode='Markdown')
-                 logger.info(f"Item {candidate.get('title')} already exists.")
-                 return
-
-            # 2. Get Root Folder & Profile
-            # Fetch Root Folders
-            rf_resp = make_service_request(
-                db, arr_service(type_), 'GET',
-                f"{base_url}/api/v3/rootfolder",
-                headers={'X-Api-Key': api_key},
+        except ArrAddNotFoundError:
+            add_not_found = get_phrase(prefs or {}, phrase_keys.ADD_NOT_FOUND)
+            await query.edit_message_caption(
+                caption=f"{query.message.caption}\n\n{add_not_found}",
+                parse_mode='Markdown',
             )
-            root_folders = rf_resp.json()
-            if not root_folders:
-                raise Exception("No Root Folders configured")
-            root_path = root_folders[0]['path']
-            
-            # Fetch Quality Profile — match by name if specified, else use first
-            qp_resp = make_service_request(
-                db, arr_service(type_), 'GET',
-                f"{base_url}/api/v3/qualityprofile",
-                headers={'X-Api-Key': api_key},
+            return
+        except ArrAlreadyManagedError as already_managed:
+            already_in_library = get_phrase(prefs or {}, phrase_keys.ALREADY_IN_LIBRARY)
+            await query.edit_message_caption(
+                caption=f"{query.message.caption}\n\n{already_in_library}",
+                parse_mode='Markdown',
             )
-            profiles = qp_resp.json()
-            if not profiles:
-                 raise Exception("No Quality Profiles configured")
-            if quality_profile:
-                matched = next(
-                    (p for p in profiles if p.get('name', '').lower() == quality_profile.lower()),
-                    None
-                )
-                if matched:
-                    profile_id = matched['id']
-                    logger.info(f"Using quality profile '{matched['name']}' (id={profile_id})")
-                else:
-                    profile_id = profiles[0]['id']
-                    logger.warning(f"Quality profile '{quality_profile}' not found, falling back to '{profiles[0]['name']}'")
-            else:
-                profile_id = profiles[0]['id']
-                logger.info(f"No quality profile specified, using first: '{profiles[0]['name']}'")
-
-            # Prepare Payload
-            payload = candidate
-            payload['qualityProfileId'] = profile_id
-            payload['rootFolderPath'] = root_path
-            payload['monitored'] = True
-            
-            if type_ == 'movie':
-                payload['addOptions'] = {'searchForMovie': True}
-            else:
-                payload['addOptions'] = {'searchForMissingEpisodes': True}
-                payload['seasonFolder'] = True
-
-            logger.info(f"Sending Add Payload for {candidate.get('title')}")
-            resp_add = make_service_request(
-                db, arr_service(type_), 'POST', add_endpoint,
-                headers={'X-Api-Key': api_key}, json_body=payload,
-            )
-            
-            if resp_add.status_code == 201:
-                logger.info("Add successful.")
-                
-                # Record the media request for webhook notifications
-                # Store chat_id and message_id so webhook can later edit this card
-                chat_id = query.message.chat_id
-                message_id = query.message.message_id
-                if user_id:
-                    title = candidate.get('title', '')
-                    tmdb_id = str(candidate.get('tmdbId', '')) if type_ == 'movie' else None
-                    tvdb_id = str(candidate.get('tvdbId', '')) if type_ == 'series' else None
-                    db.add_media_request(
-                        telegram_id=user_id,
-                        title=title,
-                        media_type=type_,
-                        tmdb_id=tmdb_id,
-                        tvdb_id=tvdb_id,
-                        chat_id=chat_id,
-                        message_id=message_id
-                    )
-                
-                # Keep nav row but replace Add with "⏳ Downloading" (no-op)
-                current_markup = query.message.reply_markup
-                if current_markup and current_markup.inline_keyboard:
-                    new_rows = []
-                    for row in current_markup.inline_keyboard:
-                        new_row = []
-                        for btn in row:
-                            if btn.callback_data and btn.callback_data.startswith('ADD|'):
-                                downloading = get_phrase(prefs or {}, phrase_keys.INLINE_DOWNLOADING)
-                                new_row.append(InlineKeyboardButton(downloading, callback_data="NOP"))
-                            else:
-                                new_row.append(btn)
-                        new_rows.append(new_row)
-                    await query.edit_message_reply_markup(
-                        reply_markup=InlineKeyboardMarkup(new_rows)
-                    )
-                else:
-                    await query.edit_message_reply_markup(reply_markup=None)
-            else:
-                err_text = resp_add.text
-                logger.error(f"Add failed: {resp_add.status_code} - {err_text}")
-                add_failed = get_phrase(prefs or {}, phrase_keys.ADD_FAILED)
-                await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_failed}", parse_mode='Markdown')
-
+            logger.info("Item %s already exists.", already_managed)
+            return
         except Exception as e:
             logger.error(f"Exception during perform_add: {e}")
-            # Try to inform user
             try:
                 add_error = get_phrase(prefs or {}, phrase_keys.ADD_ERROR)
                 if query.message.caption:
-                     await query.edit_message_caption(caption=f"{query.message.caption}\n\n{add_error}", parse_mode='Markdown')
+                    await query.edit_message_caption(
+                        caption=f"{query.message.caption}\n\n{add_error}",
+                        parse_mode='Markdown',
+                    )
                 else:
-                     await query.edit_message_text(text=f"{query.message.text}\n\n{add_error}", parse_mode='Markdown')
-            except:
+                    await query.edit_message_text(
+                        text=f"{query.message.text}\n\n{add_error}",
+                        parse_mode='Markdown',
+                    )
+            except Exception:
                 pass
+            return
+
+        title = added_item.get('title') or 'requested item'
+        request_id = None
+        if user_id:
+            tmdb_id = str(added_item.get('tmdbId') or '') if type_ == 'movie' else None
+            tvdb_id = str(added_item.get('tvdbId') or '') if type_ == 'series' else None
+            request_id = db.add_media_request(
+                telegram_id=user_id,
+                title=title,
+                media_type=type_,
+                tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id,
+                arr_service=arr_service(type_),
+                arr_instance=arr_instance,
+                arr_id=added_item.get('id'),
+            )
+
+        if request_id:
+            await notify_request_queued(
+                db,
+                query.get_bot(),
+                request_id,
+                user_id,
+                prefs or {},
+                title,
+            )
 
 
     async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):

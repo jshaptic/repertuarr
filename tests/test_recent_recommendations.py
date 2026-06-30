@@ -114,6 +114,22 @@ def test_get_recent_recommendations_excludes_expired(db):
     assert db.get_recent_recommendations(user_id, 3600) == []
 
 
+def test_record_mixed_tmdb_ids_including_none(db):
+    """LLM recommendations may omit tmdb_id; recording must not call dict.get on models."""
+    user_id = 88
+    items = [
+        _make_item("With Id", "With Id", 101),
+        _make_item("No Id", "No Id", None),
+    ]
+    db.record_recent_recommendations(user_id, items)
+
+    ttl = 3600
+    assert db.get_recent_excluded_tmdb_ids(user_id, ttl) == {"101"}
+    titles = db.get_recent_excluded_titles(user_id, ttl)
+    assert "with id" in titles
+    assert "no id" in titles
+
+
 def test_record_skips_items_without_title(db):
     user_id = 1
     db.record_recent_recommendations(user_id, [{"overview": "no title"}])

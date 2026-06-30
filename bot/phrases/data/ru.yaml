@@ -58,9 +58,19 @@ styles:
 shared:
   recommend_button:
   - Порекомендуй что-нибудь
+  media_type_movie:
+  - Фильм
+  media_type_show:
+  - Сериал
+  request_queued:
+  - '*{title}* ({type}) добавлен в очередь. Сообщу, когда начнётся загрузка.'
+  download_started:
+  - '*{title}* ({type}) начал загружаться. Сообщу, когда можно будет смотреть.'
   download_ready:
-  - 🎉 *{title}* готов\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) готов к просмотру! [Смотреть в Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* загружен!
-  play_button:
-  - ▶️ Смотреть в Jellyfin
+  - 🎉 *{title}* ({type}) загружен!
+  download_failed:
+  - ⚠️ *{title}* ({type}) добавлен, но для завершения загрузки нужна ручная помощь. Обратись к владельцу сервера.
+  download_unavailable:
+  - ⚠️ *{title}* ({type}) добавлен, но подходящий вариант для загрузки сейчас не найден. Обратись к владельцу сервера.

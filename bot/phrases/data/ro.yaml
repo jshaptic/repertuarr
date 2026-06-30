@@ -38,8 +38,6 @@ shared:
   recommend_button:
   - Recomandă-mi ceva
   download_ready:
-  - 🎉 *{title}* este gata\! [{play_label}]({url})
+  - 🎉 *{title}* ({type}) este gata! [▶️ Vizionează pe Jellyfin]({url})
   download_ready_no_url:
-  - 🎉 *{title}* a fost descărcat!
-  play_button:
-  - ▶️ Vizionează pe Jellyfin
+  - 🎉 *{title}* ({type}) a fost descărcat!

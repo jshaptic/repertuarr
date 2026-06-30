@@ -1,13 +1,13 @@
 import logging
 import json
 from aiohttp import web
-from .phrases import get_phrase
+from .phrases import get_media_type_label, get_phrase
 from .phrases import keys as phrase_keys
 from .jellyfin import JellyfinClient
 from .admin_ui import register_admin_routes
+from .webhook_events import build_user_prefs_map, mark_grabbed, notify_failed_requests
 
 logger = logging.getLogger(__name__)
-
 
 async def start_webhook_server(
     config: dict,
@@ -30,14 +30,7 @@ async def start_webhook_server(
     """
     port = config.get('webhook_port', 8585)
 
-    # Build a lookup of messenger_user_id -> preferences
-    user_prefs_map = {}
-    for user in users_config:
-        account = user.get('messenger', {})
-        if account.get('messenger_name') == messenger_name:
-            uid = account.get('user_id')
-            if uid:
-                user_prefs_map[uid] = user.get('preferences', {})
+    user_prefs_map = build_user_prefs_map(users_config, messenger_name)
 
     # ── Radarr ────────────────────────────────────────────────────────
     
@@ -52,7 +45,48 @@ async def start_webhook_server(
         
         if event_type == 'Test':
             return web.Response(text="OK")
+
+        if event_type == 'MovieAdded':
+            movie = payload.get('movie', {})
+            logger.info(f"Radarr movie added: '{movie.get('title', '')}'")
+            return web.Response(text="OK")
         
+        if event_type == 'Grab':
+            movie = payload.get('movie', {})
+            await mark_grabbed(
+                db=db,
+                bot_app=bot_app,
+                user_prefs_map=user_prefs_map,
+                payload=payload,
+                title=movie.get('title', ''),
+                media_type='movie',
+                arr_service='radarr',
+                arr_id=movie.get('id'),
+                tmdb_id=str(movie.get('tmdbId', '')) if movie.get('tmdbId') else None,
+            )
+            return web.Response(text="OK")
+
+        if event_type == 'ManualInteractionRequired':
+            movie = payload.get('movie', {})
+            await notify_failed_requests(
+                db=db,
+                bot_app=bot_app,
+                user_prefs_map=user_prefs_map,
+                payload=payload,
+                title=movie.get('title', ''),
+                media_type='movie',
+                arr_service='radarr',
+                arr_id=movie.get('id'),
+                tmdb_id=str(movie.get('tmdbId', '')) if movie.get('tmdbId') else None,
+                reason='manual_interaction_required',
+                status='failed',
+            )
+            return web.Response(text="OK")
+
+        if event_type in ('Health', 'HealthRestored'):
+            logger.info(f"Radarr health webhook received: {payload.get('message') or payload.get('health', {})}")
+            return web.Response(text="OK")
+
         if event_type != 'Download':
             return web.Response(text="Ignored")
         
@@ -85,7 +119,48 @@ async def start_webhook_server(
         
         if event_type == 'Test':
             return web.Response(text="OK")
+
+        if event_type == 'SeriesAdd':
+            series = payload.get('series', {})
+            logger.info(f"Sonarr series added: '{series.get('title', '')}'")
+            return web.Response(text="OK")
         
+        if event_type == 'Grab':
+            series = payload.get('series', {})
+            await mark_grabbed(
+                db=db,
+                bot_app=bot_app,
+                user_prefs_map=user_prefs_map,
+                payload=payload,
+                title=series.get('title', ''),
+                media_type='series',
+                arr_service='sonarr',
+                arr_id=series.get('id'),
+                tvdb_id=str(series.get('tvdbId', '')) if series.get('tvdbId') else None,
+            )
+            return web.Response(text="OK")
+
+        if event_type == 'ManualInteractionRequired':
+            series = payload.get('series', {})
+            await notify_failed_requests(
+                db=db,
+                bot_app=bot_app,
+                user_prefs_map=user_prefs_map,
+                payload=payload,
+                title=series.get('title', ''),
+                media_type='series',
+                arr_service='sonarr',
+                arr_id=series.get('id'),
+                tvdb_id=str(series.get('tvdbId', '')) if series.get('tvdbId') else None,
+                reason='manual_interaction_required',
+                status='failed',
+            )
+            return web.Response(text="OK")
+
+        if event_type in ('Health', 'HealthRestored'):
+            logger.info(f"Sonarr health webhook received: {payload.get('message') or payload.get('health', {})}")
+            return web.Response(text="OK")
+
         if event_type != 'Download':
             return web.Response(text="Ignored")
         
@@ -181,18 +256,26 @@ async def start_webhook_server(
             request_id = req['id']
             prefs = user_prefs_map.get(telegram_id, {'language': 'en', 'bot_style': 'default'})
 
+            req_media_type = req.get('media_type') or media_type
+            type_label = get_media_type_label(prefs, req_media_type)
+            req_title = req.get('title') or title
+
             # Build notification text with an inline link (no buttons)
             if jellyfin_url:
-                play_label = get_phrase(prefs, phrase_keys.PLAY_BUTTON)
                 text = get_phrase(
                     prefs,
                     phrase_keys.DOWNLOAD_READY,
-                    title=title,
-                    play_label=play_label,
+                    title=req_title,
+                    type=type_label,
                     url=jellyfin_url,
                 )
             else:
-                text = get_phrase(prefs, phrase_keys.DOWNLOAD_READY_NO_URL, title=title)
+                text = get_phrase(
+                    prefs,
+                    phrase_keys.DOWNLOAD_READY_NO_URL,
+                    title=req_title,
+                    type=type_label,
+                )
 
             try:
                 await bot_app.bot.send_message(

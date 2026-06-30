@@ -45,6 +45,16 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
                 tvdb_id TEXT,
                 chat_id INTEGER,
                 message_id INTEGER,
+                arr_service TEXT,
+                arr_instance TEXT,
+                arr_id INTEGER,
+                download_id TEXT,
+                last_checked_at TIMESTAMP,
+                failure_reason TEXT,
+                failure_detail TEXT,
+                failed_at TIMESTAMP,
+                notified_at TIMESTAMP,
+                queued_notified_at TIMESTAMP,
                 status TEXT DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -53,6 +63,16 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         for stmt in (
             "ALTER TABLE media_requests ADD COLUMN chat_id INTEGER",
             "ALTER TABLE media_requests ADD COLUMN message_id INTEGER",
+            "ALTER TABLE media_requests ADD COLUMN arr_service TEXT",
+            "ALTER TABLE media_requests ADD COLUMN arr_instance TEXT",
+            "ALTER TABLE media_requests ADD COLUMN arr_id INTEGER",
+            "ALTER TABLE media_requests ADD COLUMN download_id TEXT",
+            "ALTER TABLE media_requests ADD COLUMN last_checked_at TIMESTAMP",
+            "ALTER TABLE media_requests ADD COLUMN failure_reason TEXT",
+            "ALTER TABLE media_requests ADD COLUMN failure_detail TEXT",
+            "ALTER TABLE media_requests ADD COLUMN failed_at TIMESTAMP",
+            "ALTER TABLE media_requests ADD COLUMN notified_at TIMESTAMP",
+            "ALTER TABLE media_requests ADD COLUMN queued_notified_at TIMESTAMP",
         ):
             try:
                 cursor.execute(stmt)
@@ -62,6 +82,14 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_media_requests_status
             ON media_requests(status)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_media_requests_arr
+            ON media_requests(arr_service, arr_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_media_requests_download
+            ON media_requests(download_id)
         """)
 
         self._init_log_schema(cursor)
@@ -534,36 +562,71 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
         tmdb_id: str = None,
         tvdb_id: str = None,
         chat_id: int = None,
-        message_id: int = None
-    ):
+        message_id: int = None,
+        arr_service: str = None,
+        arr_instance: str = None,
+        arr_id: int = None,
+    ) -> int:
         """Record that a user requested a media item via the bot"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO media_requests (telegram_id, title, media_type, tmdb_id, tvdb_id, chat_id, message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (telegram_id, title, media_type, tmdb_id, tvdb_id, chat_id, message_id))
+            INSERT INTO media_requests (
+                telegram_id, title, media_type, tmdb_id, tvdb_id, chat_id, message_id,
+                arr_service, arr_instance, arr_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            telegram_id,
+            title,
+            media_type,
+            tmdb_id,
+            tvdb_id,
+            chat_id,
+            message_id,
+            arr_service,
+            arr_instance,
+            arr_id,
+        ))
 
+        request_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        logger.info(f"Recorded media request: user={telegram_id}, title='{title}', type={media_type}")
+        logger.info(
+            "Recorded media request: id=%s user=%s title='%s' type=%s",
+            request_id,
+            telegram_id,
+            title,
+            media_type,
+        )
+        return request_id
 
-    def find_pending_requests(
+    def find_active_requests(
         self,
         title: str = None,
         tmdb_id: str = None,
-        tvdb_id: str = None
+        tvdb_id: str = None,
+        media_type: str = None,
+        arr_service: str = None,
+        arr_id: int = None,
+        download_id: str = None,
     ) -> List[dict]:
-        """Find pending media requests matching downloaded media by ID or title"""
+        """Find requests that can still receive lifecycle updates."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        conditions = ["status = 'pending'"]
+        conditions = ["status IN ('pending', 'grabbed')"]
         params = []
 
         id_conditions = []
+        if download_id:
+            id_conditions.append("download_id = ?")
+            params.append(str(download_id))
+        if arr_service and arr_id:
+            id_conditions.append("(arr_service = ? AND arr_id = ?)")
+            params.extend([arr_service, int(arr_id)])
         if tmdb_id:
             id_conditions.append("tmdb_id = ?")
             params.append(str(tmdb_id))
@@ -579,6 +642,9 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
             return []
 
         conditions.append(f"({' OR '.join(id_conditions)})")
+        if media_type:
+            conditions.append("media_type = ?")
+            params.append(media_type)
 
         query = f"SELECT * FROM media_requests WHERE {' AND '.join(conditions)}"
         cursor.execute(query, params)
@@ -588,18 +654,145 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
 
         return [dict(row) for row in rows]
 
+    def find_pending_requests(
+        self,
+        title: str = None,
+        tmdb_id: str = None,
+        tvdb_id: str = None
+    ) -> List[dict]:
+        """Find pending media requests matching downloaded media by ID or title"""
+        return self.find_active_requests(title=title, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
+
     def mark_request_notified(self, request_id: int):
         """Mark a media request as notified after sending the download notification"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute("""
-            UPDATE media_requests SET status = 'notified' WHERE id = ?
+            UPDATE media_requests
+            SET status = 'notified', notified_at = CURRENT_TIMESTAMP
+            WHERE id = ?
         """, (request_id,))
 
         conn.commit()
         conn.close()
         logger.info(f"Marked media request {request_id} as notified")
+
+    def mark_request_queued_notified(self, request_id: int) -> bool:
+        """Record that the user received the request_queued lifecycle message."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE media_requests
+            SET queued_notified_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND queued_notified_at IS NULL
+        """, (request_id,))
+
+        conn.commit()
+        updated = cursor.rowcount
+        conn.close()
+        if updated:
+            logger.info(f"Marked media request {request_id} as queued-notified")
+        return updated > 0
+
+    def mark_request_grabbed(self, request_id: int, download_id: str = None):
+        """Mark a request as grabbed by Radarr/Sonarr."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE media_requests
+            SET status = 'grabbed',
+                download_id = COALESCE(?, download_id),
+                last_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND (
+                status = 'pending'
+                OR (
+                    status = 'grabbed'
+                    AND ? IS NOT NULL
+                    AND (download_id IS NULL OR download_id != ?)
+                )
+              )
+        """, (download_id, request_id, download_id, download_id))
+
+        conn.commit()
+        updated = cursor.rowcount
+        conn.close()
+        if updated:
+            logger.info(f"Marked media request {request_id} as grabbed")
+        return updated > 0
+
+    def mark_request_failed(
+        self,
+        request_id: int,
+        reason: str,
+        detail: str = None,
+        status: str = 'failed',
+    ) -> bool:
+        """Mark an active request as failed/unavailable after notifying the user."""
+        if status not in ('failed', 'unavailable'):
+            raise ValueError(f"Unsupported failure status: {status}")
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE media_requests
+            SET status = ?,
+                failure_reason = ?,
+                failure_detail = ?,
+                failed_at = CURRENT_TIMESTAMP,
+                notified_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status IN ('pending', 'grabbed')
+        """, (status, reason, detail, request_id))
+
+        conn.commit()
+        updated = cursor.rowcount
+        conn.close()
+        if updated:
+            logger.info(f"Marked media request {request_id} as {status}: {reason}")
+        return updated > 0
+
+    def get_download_monitor_candidates(self, limit: int = 100) -> List[dict]:
+        """Return active requests with Arr IDs for background monitoring."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM media_requests
+            WHERE status IN ('pending', 'grabbed')
+              AND arr_service IS NOT NULL
+              AND arr_id IS NOT NULL
+            ORDER BY COALESCE(last_checked_at, created_at) ASC
+            LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def mark_request_checked(self, request_id: int):
+        """Record that the monitor inspected a request."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE media_requests
+            SET last_checked_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (request_id,))
+        conn.commit()
+        conn.close()
+
+    def get_media_request(self, request_id: int) -> Optional[dict]:
+        """Fetch a single media request row."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM media_requests WHERE id = ?", (request_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
 
     def get_recent_media_requests(self, limit: int = 50, user_id: Optional[int] = None) -> List[dict]:
         """Get recent media requests for the admin UI"""
