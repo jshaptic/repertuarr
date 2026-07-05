@@ -4,6 +4,9 @@ Your task is to generate {{recommendation_count}} deeply curated recommendations
 ## Trending & Matching Content (from TMDB)
 The following movies and TV shows match the user's preferences and are currently trending or highly rated.
 You MUST ONLY recommend items from this provided candidates list. DO NOT invent anything else or suggest items not on this list.
+{{#is_custom_pool}}
+The FIRST candidate group below was pre-filtered to match the user's explicit constraints. Prefer items from it; use the other groups only if it cannot fill {{recommendation_count}} items.
+{{/is_custom_pool}}
 
 {{#tmdb_candidate_groups}}
 ### {{name}}

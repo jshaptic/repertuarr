@@ -284,12 +284,17 @@ def fetch_candidate_groups_from_sources(
     language: str,
     excluded_tmdb_ids: Optional[List[Any]] = None,
     excluded_titles: Optional[Set[str]] = None,
+    use_cache: bool = True,
 ) -> List[dict]:
-    """Fetch TMDB candidates grouped by configured recommendation source."""
+    """Fetch TMDB candidates grouped by configured recommendation source.
+
+    use_cache=False is for synthesized one-off sources (custom user filters)
+    whose cache entries would never be reused and would grow the cache unbounded.
+    """
     excluded_ids = {str(i) for i in (excluded_tmdb_ids or [])}
     title_exclusions = {t.lower() for t in (excluded_titles or set()) if t}
     cache_key = _build_cache_key(sources, language, excluded_ids, title_exclusions, 'groups')
-    if cache_key in tmdb_client.candidates_cache:
+    if use_cache and cache_key in tmdb_client.candidates_cache:
         timestamp, data = tmdb_client.candidates_cache[cache_key]
         if time.time() - timestamp < tmdb_client.cache_ttl:
             logger.info("Returning grouped TMDB candidates from cache.")
@@ -315,7 +320,8 @@ def fetch_candidate_groups_from_sources(
 
     total_items = sum(len(group['items']) for group in groups)
     logger.info("TMDB fetched %d unique candidates in %d group(s).", total_items, len(groups))
-    tmdb_client.candidates_cache[cache_key] = (time.time(), groups)
+    if use_cache:
+        tmdb_client.candidates_cache[cache_key] = (time.time(), groups)
     return groups
 
 

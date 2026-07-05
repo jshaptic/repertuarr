@@ -153,6 +153,66 @@ class TmdbClient:
             logger.error(f"Error discovering {media_type}s on page {page}: {e}")
             return []
 
+    def search_person(self, query: str, page: int = 1) -> List[dict]:
+        """Search people by name via /search/person. Returns raw person dicts
+        (id, name, popularity, known_for_department) sorted as TMDB returns them."""
+        url = f"{self.base_url}/search/person"
+        params = {"query": query, "include_adult": "false", "page": page}
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            results = resp.json().get('results', [])
+            return [
+                {
+                    'id': p.get('id'),
+                    'name': p.get('name'),
+                    'popularity': p.get('popularity', 0.0),
+                    'known_for_department': p.get('known_for_department', ''),
+                }
+                for p in results if p.get('id')
+            ]
+        except Exception as e:
+            logger.error(f"Error searching person {query!r}: {e}")
+            return []
+
+    def search_media(self, query: str, media_type: str, language: str, year: Optional[int] = None, page: int = 1) -> List[dict]:
+        """Search movies or TV shows by title via /search/movie or /search/tv."""
+        endpoint = "movie" if media_type == 'movie' else "tv"
+        url = f"{self.base_url}/search/{endpoint}"
+        params = {"query": query, "language": language, "include_adult": "false", "page": page}
+        if year:
+            params["year" if media_type == 'movie' else "first_air_date_year"] = year
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            results = resp.json().get('results', [])
+            return self._map_items(results, media_type)
+        except Exception as e:
+            logger.error(f"Error searching {media_type} {query!r}: {e}")
+            return []
+
+    def get_person_credits(self, person_id: int, media_type: str, language: str) -> List[dict]:
+        """Fetch a person's movie or TV credits via /person/{id}/movie_credits|tv_credits.
+
+        Merges cast and crew credits, dedupes by TMDB id, and returns items in the
+        unified _map_items format sorted by popularity descending.
+        """
+        endpoint = "movie_credits" if media_type == 'movie' else "tv_credits"
+        url = f"{self.base_url}/person/{person_id}/{endpoint}"
+        params = {"language": language}
+        try:
+            resp = self._make_request(url, params=params, timeout=10)
+            data = resp.json()
+            merged: Dict[int, dict] = {}
+            for credit in (data.get('cast', []) + data.get('crew', [])):
+                credit_id = credit.get('id')
+                if credit_id and credit_id not in merged:
+                    merged[credit_id] = credit
+            items = self._map_items(list(merged.values()), media_type)
+            items.sort(key=lambda x: x.get('popularity', 0.0), reverse=True)
+            return items
+        except Exception as e:
+            logger.error(f"Error fetching person {person_id} {media_type} credits: {e}")
+            return []
+
     def get_popular(self, language: str, media_type: str, page: int = 1) -> List[dict]:
         endpoint = "movie" if media_type == 'movie' else "tv"
         url = f"{self.base_url}/{endpoint}/popular"
@@ -199,10 +259,11 @@ class TmdbClient:
         language: str,
         excluded_tmdb_ids: list = None,
         excluded_titles: set = None,
+        use_cache: bool = True,
     ) -> List[dict]:
         """Fetch candidate pool grouped by configured recommendation source."""
         from bot.recommendation_pool import fetch_candidate_groups_from_sources
 
         return fetch_candidate_groups_from_sources(
-            self, sources, language, excluded_tmdb_ids, excluded_titles
+            self, sources, language, excluded_tmdb_ids, excluded_titles, use_cache
         )

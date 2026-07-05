@@ -119,6 +119,16 @@ async def main():
         raise ValueError(
             "bot.recommendation_carousel_count must be a positive integer"
         )
+    custom_pool_candidates = bot_section.get('custom_pool_candidates', 50)
+    if not isinstance(custom_pool_candidates, int) or custom_pool_candidates <= 0:
+        raise ValueError(
+            "bot.custom_pool_candidates must be a positive integer"
+        )
+    inquiry_max_tool_iterations = bot_section.get('inquiry_max_tool_iterations', 4)
+    if not isinstance(inquiry_max_tool_iterations, int) or inquiry_max_tool_iterations <= 0:
+        raise ValueError(
+            "bot.inquiry_max_tool_iterations must be a positive integer"
+        )
 
     bot_config = {
         'sonarr_url': first_sonarr.get('url'),
@@ -130,6 +140,8 @@ async def main():
         'webhook_port': bot_section.get('webhook_port', 8585),
         'recommendation_exclude_ttl_hours': int(ttl_hours),
         'recommendation_carousel_count': carousel_count,
+        'custom_pool_candidates': custom_pool_candidates,
+        'inquiry_max_tool_iterations': inquiry_max_tool_iterations,
         'download_monitor': bot_section.get('download_monitor', {}),
         'llms': config.get('llms', []),
         'agent': config.get('agent', {}),

@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandl
 from openai import OpenAI
 import chevron
 import os
-from bot.models import IntentResponse, RecommendationResponse, InquiryResponse
+from bot.models import IntentResponse, RecommendationResponse
 from bot.database import Database
 from bot.carousel_feedback_buttons import (
     STYLE_DANGER,
@@ -39,7 +39,9 @@ from bot.recommendation_prompt import (
     build_recommendation_input_messages,
     build_system_message,
 )
-from bot.recommendation_pool import resolve_recommendation_sources
+from bot.recommendation_filters import build_candidate_groups_for_request
+from bot.filter_planner import run_filter_planner
+from bot.inquiry_agent import run_inquiry
 from bot.arr_add import ArrAddNotFoundError, ArrAlreadyManagedError, submit_arr_add
 from bot.telegram_notify import notify_request_queued
 logger = logging.getLogger(__name__)
@@ -87,6 +89,8 @@ def register_handlers(app: Application, config: dict, auth_func):
     recommendation_exclude_ttl_hours = config['recommendation_exclude_ttl_hours']
     recommendation_exclude_ttl_seconds = recommendation_exclude_ttl_hours * 3600
     recommendation_carousel_count = config['recommendation_carousel_count']
+    custom_pool_candidates = config.get('custom_pool_candidates', 50)
+    inquiry_max_tool_iterations = config.get('inquiry_max_tool_iterations', 4)
 
     def get_agent_llm(agent_type: str):
         prompt_cfg = agent_prompts.get(agent_type, {})
@@ -296,15 +300,9 @@ def register_handlers(app: Application, config: dict, auth_func):
                 pricing=llm_cfg.get('pricing'),
             )
 
-            if result.intent == 'RECOMMEND':
-                await handle_recommend_request(update, context, result)
-            
-            elif result.intent == 'ADD_MEDIA':
-                await handle_add_media_request(update, context, result)
-            
-            elif result.intent == 'INQUIRY':
-                await handle_inquiry_request(update, context, result)
-            
+            handler = intent_handlers.get(result.intent)
+            if handler:
+                await handler(update, context, result)
             else:
                 await reply_bot_text(
                     update, prefs, phrase_keys.UNKNOWN_INTENT,
@@ -335,43 +333,37 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         try:
             # Build messages: System + History
-            system_content = load_prompt(agent_prompts.get('inquiry', {}), language=user_lang)
+            system_content = load_prompt(
+                agent_prompts.get('inquiry', {}),
+                language=user_lang,
+                has_tmdb_tools=bool(tmdb_client),
+            )
             messages = [{"role": "system", "content": system_content}]
-            
+
             # Add history from DB
             messages.extend(get_llm_history(update.effective_user.id))
-            
+
             logger.info(f"Sending LLM Request (Inquiry)")
-            
-            start_time = time.time()
+
             llm_cfg, current_client = get_agent_llm('inquiry')
             if not current_client:
                 raise ValueError("No OpenAI client available for inquiry")
-                
-            kwargs = build_llm_kwargs(llm_cfg,
-                model=llm_cfg.get('model', 'gpt-4.1-mini'),
-                input=messages,
-                text_format=InquiryResponse,
-                tools=[{"type": "web_search"}]
-            )
-            response = current_client.responses.parse(**kwargs)
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            parsed = response.output_parsed
 
-            log_llm_call(
-                db,
+            parsed = run_inquiry(
+                client=current_client,
+                llm_cfg=llm_cfg,
+                build_llm_kwargs=build_llm_kwargs,
+                db=db,
+                tmdb_client=tmdb_client,
+                messages=messages,
                 session_id=context.user_data['session_id'],
                 user_id=update.effective_user.id,
-                user_message=user_text,
-                prompt_name='inquiry',
-                kwargs=kwargs,
-                response=response,
-                parsed=parsed,
-                duration_ms=duration_ms,
-                llm_name=llm_cfg.get('name'),
-                pricing=llm_cfg.get('pricing'),
+                user_text=user_text,
+                language=user_lang,
+                max_iterations=inquiry_max_tool_iterations,
             )
+            if not parsed:
+                raise ValueError("Inquiry returned no parsed response")
 
             reply_text = parsed.reply_text
             keyboard = build_recommend_keyboard(prefs)
@@ -421,10 +413,39 @@ def register_handlers(app: Application, config: dict, auth_func):
                  watched_titles = all_watched
                  logger.info(f"Merged Jellyfin watched items: {len(jellyfin_watched)} from Jellyfin, {len(watched_titles)} total")
              
+             # Filter planner: extract concrete constraints for a custom pool.
+             # Only runs when the intent produced a query and the planner prompt
+             # is configured; the shortcut recommend button never triggers it.
+             plan = None
+             if tmdb_client and data.query and 'filter_planner' in agent_prompts:
+                 try:
+                     planner_cfg, planner_client = get_agent_llm('filter_planner')
+                     if not planner_client:
+                         raise ValueError("No OpenAI client available for filter planner")
+                     planner_prompt = load_prompt(
+                         agent_prompts.get('filter_planner', {}),
+                         movie_genres=sorted(g.title() for g in tmdb_client.movie_genres),
+                         tv_genres=sorted(g.title() for g in tmdb_client.tv_genres),
+                     )
+                     plan = run_filter_planner(
+                         client=planner_client,
+                         llm_cfg=planner_cfg,
+                         build_llm_kwargs=build_llm_kwargs,
+                         system_prompt=planner_prompt,
+                         query=data.query,
+                         history=get_llm_history(user_id)[-6:],
+                         db=db,
+                         session_id=context.user_data['session_id'],
+                         user_id=user_id,
+                     )
+                 except Exception as plan_e:
+                     logger.error(f"Filter planner failed, using predefined sources: {plan_e}")
+
              # Ask LLM for list with user context
              tmdb_candidate_groups = []
+             is_custom_pool = False
+             carousel_media_type = 'movie'
              if tmdb_client:
-                 recommendation_sources = resolve_recommendation_sources(user_prefs)
                  recent_tmdb_ids = db.get_recent_excluded_tmdb_ids(
                      user_id, recommendation_exclude_ttl_seconds
                  )
@@ -433,10 +454,13 @@ def register_handlers(app: Application, config: dict, auth_func):
                  )
                  excluded_tmdb_ids = db.get_excluded_tmdb_ids(user_id) | recent_tmdb_ids
                  excluded_titles = db.get_excluded_titles(user_id) | recent_titles
-                 tmdb_candidate_groups = tmdb_client.get_candidate_groups(
-                     recommendation_sources, user_lang, excluded_tmdb_ids, excluded_titles
+                 tmdb_candidate_groups, is_custom_pool, pool_media_type = build_candidate_groups_for_request(
+                     tmdb_client, plan, user_prefs, user_lang,
+                     excluded_tmdb_ids, excluded_titles,
+                     recommendation_carousel_count, custom_pool_candidates,
                  )
-             
+                 carousel_media_type = 'movie' if pool_media_type == 'movie' else 'series'
+
              recommendation_prompt = load_prompt(
                  agent_prompts.get('recommend', {}),
                  query=query,
@@ -444,6 +468,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  recommendation_count=recommendation_carousel_count,
                  has_tmdb_candidates=bool(tmdb_candidate_groups),
                  tmdb_candidate_groups=tmdb_candidate_groups,
+                 is_custom_pool=is_custom_pool,
              )
              system_message = build_system_message(user_name, user_preferences, user_guidelines)
              feedback_message = build_feedback_message(watched_titles[:20], disliked_titles[:20])
@@ -493,7 +518,7 @@ def register_handlers(app: Application, config: dict, auth_func):
 
              carousel_items = parsed_response.items[:recommendation_carousel_count]
 
-             await start_carousel(update, context, list(carousel_items), 'movie')
+             await start_carousel(update, context, list(carousel_items), carousel_media_type)
              db.record_recent_recommendations(user_id, carousel_items)
              add_to_history(update, context, "assistant", f"Shared recommendations carousel for '{query}'")
 
@@ -1100,6 +1125,14 @@ def register_handlers(app: Application, config: dict, auth_func):
         updated = db.update_chat_message_text(edited.chat_id, edited.message_id, edited.text)
         if updated:
             logger.info(f"Synced edit for message {edited.message_id} in chat {edited.chat_id}")
+
+    # Intent routing registry: adding a new intent means adding a value to
+    # IntentResponse.intent, a section in the intent prompt, and an entry here.
+    intent_handlers = {
+        'RECOMMEND': handle_recommend_request,
+        'ADD_MEDIA': handle_add_media_request,
+        'INQUIRY': handle_inquiry_request,
+    }
 
     # Add handlers
     app.add_handler(CommandHandler("start", start))
