@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Anbefal meg noe
   download_ready:
-  - 🎉 *{title}* ({type}) er klar! [▶️ Se på Jellyfin]({url})
+  - 🎉 *{title}* ({type}) er klar! [▶️ Se på {server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) er lastet ned!

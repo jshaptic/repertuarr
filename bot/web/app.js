@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetch('/admin/api/tmdb-logs'),
                 fetch('/admin/api/sessions'),
                 fetch('/admin/api/service-logs?services=radarr,sonarr'),
-                fetch('/admin/api/service-logs?services=jellyfin'),
+                fetch('/admin/api/service-logs?services=jellyfin,plex'),
             ]);
 
             const users = await usersRes.json();

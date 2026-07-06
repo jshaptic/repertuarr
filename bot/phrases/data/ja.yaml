@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - 何かおすすめして
   download_ready:
-  - 🎉 *{title}* ({type}) の準備ができました\！ [▶️ Jellyfinで視聴]({url})
+  - 🎉 *{title}* ({type}) の準備ができました\！ [▶️ {server}で視聴]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) がダウンロードされました！

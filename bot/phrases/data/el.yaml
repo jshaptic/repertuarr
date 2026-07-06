@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Πρότεινέ μου κάτι
   download_ready:
-  - 🎉 *{title}* ({type}) είναι έτοιμο! [▶️ Δες στο Jellyfin]({url})
+  - 🎉 *{title}* ({type}) είναι έτοιμο! [▶️ Δες στο {server}]({url})
   download_ready_no_url:
   - 🎉 Το *{title}* ({type}) κατέβηκε!

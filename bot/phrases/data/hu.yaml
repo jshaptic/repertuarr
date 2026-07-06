@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Ajánlj valamit
   download_ready:
-  - 🎉 *{title}* ({type}) kész! [▶️ Nézd meg a Jellyfin-en]({url})
+  - 🎉 *{title}* ({type}) kész! [▶️ Nézd meg a {server}-en]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) letöltve!

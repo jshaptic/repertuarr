@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - המלץ לי על משהו
   download_ready:
-  - 🎉 *{title}* ({type}) מוכן! [▶️ צפה ב-Jellyfin]({url})
+  - 🎉 *{title}* ({type}) מוכן! [▶️ צפה ב-{server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) הורד!

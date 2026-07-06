@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Bana bir şey öner
   download_ready:
-  - 🎉 *{title}* ({type}) hazır! [▶️ Jellyfin'de izle]({url})
+  - 🎉 *{title}* ({type}) hazır! [▶️ {server}'de izle]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) indirildi!

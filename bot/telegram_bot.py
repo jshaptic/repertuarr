@@ -28,9 +28,9 @@ from bot.carousel_feedback_buttons import (
     feedback_button,
 )
 from bot.phrases import keys as phrase_keys
-from bot.phrases import get_phrase, build_recommend_keyboard, get_jellyfin_play_label, is_recommend_trigger
+from bot.phrases import get_phrase, build_recommend_keyboard, get_media_server_play_label, is_recommend_trigger
 from bot.phrases.replies import reply_bot_text, send_thinking_message
-from bot.jellyfin import JellyfinClient
+from bot.media_server import build_media_server_client
 from bot.session_context import set_session_id, reset_session_id
 from bot.service_request import make_service_request
 from bot.llm_logging import log_llm_call
@@ -139,16 +139,10 @@ def register_handlers(app: Application, config: dict, auth_func):
     if tmdb_client:
         tmdb_client.db = db
     
-    # Initialize Jellyfin client if configured
-    jellyfin_client = None
-    jellyfin_url = config.get('jellyfin_url')
-    jellyfin_api_key = config.get('jellyfin_api_key')
-    if jellyfin_url and jellyfin_api_key:
-        jellyfin_client = JellyfinClient(jellyfin_url, jellyfin_api_key)
-        jellyfin_client.db = db
-        logger.info("Jellyfin client initialized")
-    else:
-        logger.info("Jellyfin not configured, skipping watch history sync")
+    # Initialize the configured media server client (Jellyfin or Plex)
+    media_server_client = build_media_server_client(config.get('media_server'))
+    if media_server_client:
+        media_server_client.db = db
 
     tmdb_client = config.get('tmdb_client')
     if tmdb_client:
@@ -404,14 +398,14 @@ def register_handlers(app: Application, config: dict, auth_func):
              watched_titles = db.get_feedback_titles(user_id, 'watched')
              disliked_titles = db.get_feedback_titles(user_id, 'disliked')
              
-             # Fetch watched content from Jellyfin if configured
-             jellyfin_user_id = user_info.get('media_server', {}).get('user_id', '')
-             if jellyfin_client and jellyfin_user_id:
-                 jellyfin_watched = jellyfin_client.get_watched_items(jellyfin_user_id)
+             # Fetch watched content from the media server if configured
+             user_media_config = user_info.get('media_server', {})
+             if media_server_client and user_media_config:
+                 server_watched = media_server_client.get_watched_items(user_media_config)
                  # Merge with database watched items (remove duplicates)
-                 all_watched = list(set(watched_titles + jellyfin_watched))
+                 all_watched = list(set(watched_titles + server_watched))
                  watched_titles = all_watched
-                 logger.info(f"Merged Jellyfin watched items: {len(jellyfin_watched)} from Jellyfin, {len(watched_titles)} total")
+                 logger.info(f"Merged {media_server_client.display_name} watched items: {len(server_watched)} from server, {len(watched_titles)} total")
              
              # Filter planner: extract concrete constraints for a custom pool.
              # Only runs when the intent produced a query and the planner prompt
@@ -762,15 +756,15 @@ def register_handlers(app: Application, config: dict, auth_func):
             id_val = getattr(item, 'tmdb_id', None) if type_ == 'movie' else None
 
         # Check if item is already available
-        jf_url = None
+        media_url = None
         already_available = False
         if id_val:
-            # Check Jellyfin first — use provider ID for precise matching
-            if jellyfin_client:
+            # Check the media server first — use provider ID for precise matching
+            if media_server_client:
                 tmdb_id = str(id_val) if type_ == 'movie' else None
                 tvdb_id = str(id_val) if type_ == 'series' else None
-                jf_url = jellyfin_client.search_item(t, type_, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
-                if jf_url:
+                media_url = media_server_client.search_item(t, type_, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
+                if media_url:
                     already_available = True
             # Fallback: check if already managed by Radarr/Sonarr (id > 0)
             arr_id = item.get('id', 0) if isinstance(item, dict) else 0
@@ -819,9 +813,9 @@ def register_handlers(app: Application, config: dict, auth_func):
             
         rows.append(nav_row)
 
-        if jf_url:
-            play_label = get_jellyfin_play_label(prefs)
-            rows.append([InlineKeyboardButton(play_label, url=jf_url)])
+        if media_url:
+            play_label = get_media_server_play_label(prefs, media_server_client.display_name)
+            rows.append([InlineKeyboardButton(play_label, url=media_url)])
             
         inline_markup = InlineKeyboardMarkup(rows)
         
@@ -1142,4 +1136,4 @@ def register_handlers(app: Application, config: dict, auth_func):
     app.add_handler(MessageHandler(filters.TEXT & filters.UpdateType.EDITED_MESSAGE, handle_edited_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
     
-    return db, jellyfin_client
+    return db, media_server_client

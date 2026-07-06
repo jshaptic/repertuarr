@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - 뭔가 추천해줘
   download_ready:
-  - 🎉 *{title}* ({type}) 준비 완료! [▶️ Jellyfin에서 시청]({url})
+  - 🎉 *{title}* ({type}) 준비 완료! [▶️ {server}에서 시청]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) 다운로드 완료!

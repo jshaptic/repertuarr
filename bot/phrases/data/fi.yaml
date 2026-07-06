@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Suosittele mulle jotain
   download_ready:
-  - 🎉 *{title}* ({type}) on valmis! [▶️ Katso Jellyfinissä]({url})
+  - 🎉 *{title}* ({type}) on valmis! [▶️ Katso {server}issä]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) on ladattu!

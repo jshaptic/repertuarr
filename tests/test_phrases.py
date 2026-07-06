@@ -11,7 +11,7 @@ import yaml
 from bot.phrases import keys as phrase_keys
 from bot.phrases.catalog import load_catalog, resolve_variants
 from bot.phrases.keys import SUPPORTED_LANGUAGES, SUPPORTED_STYLES
-from bot.phrases.resolver import get_jellyfin_play_label, get_phrase, is_recommend_trigger
+from bot.phrases.resolver import get_media_server_play_label, get_phrase, is_recommend_trigger
 
 
 def _en_catalog():
@@ -162,14 +162,16 @@ def test_download_failure_phrases_hide_arr_details():
     assert "server owner" in unavailable.lower()
 
 
-def test_jellyfin_play_label_comes_from_download_ready():
+def test_media_server_play_label_comes_from_download_ready():
     prefs = {"language": "en", "bot_style": "default"}
-    assert get_jellyfin_play_label(prefs) == "Play on Jellyfin"
+    assert get_media_server_play_label(prefs, "Jellyfin") == "Play on Jellyfin"
+    assert get_media_server_play_label(prefs, "Plex") == "Play on Plex"
     ready = get_phrase(
         prefs,
         phrase_keys.DOWNLOAD_READY,
         title="Example Movie",
         type="Movie",
-        url="https://jellyfin.example/movie",
+        url="https://plex.example/movie",
+        server="Plex",
     )
-    assert "[Play on Jellyfin](https://jellyfin.example/movie)" in ready
+    assert "[Play on Plex](https://plex.example/movie)" in ready

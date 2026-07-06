@@ -71,8 +71,11 @@ def get_phrase(
     return text
 
 
-def get_jellyfin_play_label(prefs: Optional[Dict[str, Any]]) -> str:
-    """Return the Jellyfin link label embedded in the localized download_ready phrase."""
+def get_media_server_play_label(prefs: Optional[Dict[str, Any]], server_name: str) -> str:
+    """
+    Return the play-link label embedded in the localized download_ready phrase,
+    with the media server name (e.g. "Jellyfin"/"Plex") substituted in.
+    """
     resolved_lang = _user_lang(prefs)
     variants = resolve_variants(resolved_lang, "default", DOWNLOAD_READY)
     if not variants:
@@ -84,7 +87,7 @@ def get_jellyfin_play_label(prefs: Optional[Dict[str, Any]]) -> str:
         raise ValueError(
             f"download_ready phrase missing [label]({{url}}) link: {variants[0]!r}"
         )
-    return match.group(1)
+    return match.group(1).format(server=server_name)
 
 
 def get_recommend_button_label(prefs: Optional[Dict[str, Any]]) -> str:

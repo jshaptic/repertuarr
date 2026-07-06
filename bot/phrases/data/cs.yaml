@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Doporuč mi něco
   download_ready:
-  - 🎉 *{title}* ({type}) je připraven! [▶️ Sledovat na Jellyfin]({url})
+  - 🎉 *{title}* ({type}) je připraven! [▶️ Sledovat na {server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) byl stažen!

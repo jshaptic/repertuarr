@@ -3,7 +3,8 @@ import json
 from aiohttp import web
 from .phrases import get_media_type_label, get_phrase
 from .phrases import keys as phrase_keys
-from .jellyfin import JellyfinClient
+from .media_server import MediaServerClient
+from .plex import PlexClient
 from .admin_ui import register_admin_routes
 from .webhook_events import build_user_prefs_map, mark_grabbed, notify_failed_requests
 
@@ -12,20 +13,21 @@ logger = logging.getLogger(__name__)
 async def start_webhook_server(
     config: dict,
     db,
-    jellyfin_client: JellyfinClient,
+    media_server_client: MediaServerClient,
     bot_app,
     users_config: list,
     messenger_name: str,
 ):
     """
-    Start an aiohttp web server that receives Radarr/Sonarr/Jellyfin webhooks.
-    
+    Start an aiohttp web server that receives Radarr/Sonarr and media-server
+    (Jellyfin or Plex) webhooks.
+
     Notification strategy:
-      - If Jellyfin is configured: Radarr/Sonarr webhooks are ignored for
-        notifications (the media isn't in Jellyfin yet). Instead, the Jellyfin
-        webhook fires when the item is actually scanned into the library.
-      - If Jellyfin is NOT configured: Radarr/Sonarr webhooks notify directly.
-    
+      - If a media server is configured: Radarr/Sonarr webhooks are ignored for
+        notifications (the media isn't in the library yet). Instead, the media
+        server webhook fires when the item is actually scanned into the library.
+      - If no media server is configured: Radarr/Sonarr webhooks notify directly.
+
     Returns the AppRunner (caller is responsible for cleanup).
     """
     port = config.get('webhook_port', 8585)
@@ -98,9 +100,9 @@ async def start_webhook_server(
             return web.Response(text="No movie data")
         
         logger.info(f"Radarr download: '{title}' (tmdb:{tmdb_id})")
-        
-        if jellyfin_client:
-            logger.info(f"Deferring notification to Jellyfin webhook for '{title}'")
+
+        if media_server_client:
+            logger.info(f"Deferring notification to {media_server_client.display_name} webhook for '{title}'")
         else:
             await _notify_matching_requests(title, 'movie', tmdb_id=tmdb_id)
         
@@ -172,9 +174,9 @@ async def start_webhook_server(
             return web.Response(text="No series data")
         
         logger.info(f"Sonarr download: '{title}' (tvdb:{tvdb_id})")
-        
-        if jellyfin_client:
-            logger.info(f"Deferring notification to Jellyfin webhook for '{title}'")
+
+        if media_server_client:
+            logger.info(f"Deferring notification to {media_server_client.display_name} webhook for '{title}'")
         else:
             await _notify_matching_requests(title, 'series', tvdb_id=tvdb_id)
         
@@ -221,15 +223,68 @@ async def start_webhook_server(
             return web.Response(text="No title")
         
         logger.info(f"Jellyfin item added: '{title}' ({item_type}, id={item_id})")
-        
-        # Build Jellyfin URL directly from the item ID
-        jellyfin_url = None
-        if item_id and jellyfin_client:
-            jellyfin_url = jellyfin_client.get_item_url(item_id)
-        
-        await _notify_matching_requests(title, media_type, jellyfin_url=jellyfin_url)
+
+        # Build the media server URL directly from the item ID
+        media_url = None
+        if item_id and media_server_client:
+            media_url = media_server_client.get_item_url(item_id)
+
+        await _notify_matching_requests(title, media_type, media_url=media_url)
         return web.Response(text="OK")
-    
+
+    # ── Plex ──────────────────────────────────────────────────────────
+
+    async def handle_plex(request: web.Request):
+        # Plex webhooks POST multipart/form-data with a JSON `payload` field.
+        try:
+            data = await request.post()
+        except Exception:
+            logger.warning("Plex webhook: failed to parse multipart form")
+            return web.Response(status=400, text="Invalid form")
+
+        raw = data.get('payload')
+        if not raw:
+            return web.Response(text="No payload")
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Plex webhook: invalid JSON payload")
+            return web.Response(status=400, text="Invalid JSON")
+
+        event = payload.get('event', '')
+        logger.info(f"Plex webhook received: {event}")
+
+        if event != 'library.new':
+            return web.Response(text="Ignored")
+
+        metadata = payload.get('Metadata', {})
+        item_type = metadata.get('type', '')
+        rating_key = metadata.get('ratingKey', '')
+
+        # Map Plex item types to our media types
+        if item_type == 'movie':
+            media_type = 'movie'
+            title = metadata.get('title', '')
+        elif item_type in ('episode', 'season', 'show'):
+            media_type = 'series'
+            # For episodes, use the series (grandparent) name to match requests
+            title = metadata.get('grandparentTitle') or metadata.get('title', '')
+        else:
+            logger.debug(f"Plex library.new ignored for type '{item_type}'")
+            return web.Response(text="Ignored")
+
+        if not title:
+            return web.Response(text="No title")
+
+        logger.info(f"Plex item added: '{title}' ({item_type}, key={rating_key})")
+
+        media_url = None
+        if rating_key and media_server_client:
+            media_url = media_server_client.get_item_url(rating_key)
+
+        await _notify_matching_requests(title, media_type, media_url=media_url)
+        return web.Response(text="OK")
+
     # ── Shared notification logic ─────────────────────────────────────
     
     async def _notify_matching_requests(
@@ -237,20 +292,20 @@ async def start_webhook_server(
         media_type: str,
         tmdb_id: str = None,
         tvdb_id: str = None,
-        jellyfin_url: str = None,
+        media_url: str = None,
     ):
         """Match a downloaded item against pending requests and notify users."""
         requests_found = db.find_pending_requests(title=title, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
-        
+
         if not requests_found:
             logger.info(f"No pending requests matched for '{title}'")
             return
-        
-        # If no Jellyfin URL was provided directly, try searching Jellyfin
-        if not jellyfin_url and jellyfin_client:
-            jellyfin_url = jellyfin_client.search_item(title, media_type)
-            logger.info(f"Jellyfin search URL for '{title}': {jellyfin_url}")
-        
+
+        # If no media URL was provided directly, try searching the media server
+        if not media_url and media_server_client:
+            media_url = media_server_client.search_item(title, media_type)
+            logger.info(f"{media_server_client.display_name} search URL for '{title}': {media_url}")
+
         for req in requests_found:
             telegram_id = req['telegram_id']
             request_id = req['id']
@@ -261,13 +316,14 @@ async def start_webhook_server(
             req_title = req.get('title') or title
 
             # Build notification text with an inline link (no buttons)
-            if jellyfin_url:
+            if media_url:
                 text = get_phrase(
                     prefs,
                     phrase_keys.DOWNLOAD_READY,
                     title=req_title,
                     type=type_label,
-                    url=jellyfin_url,
+                    url=media_url,
+                    server=media_server_client.display_name,
                 )
             else:
                 text = get_phrase(
@@ -292,7 +348,12 @@ async def start_webhook_server(
     app = web.Application()
     app.router.add_post('/webhook/radarr', handle_radarr)
     app.router.add_post('/webhook/sonarr', handle_sonarr)
-    app.router.add_post('/webhook/jellyfin', handle_jellyfin)
+    # Register only the active media server's webhook route so a stray webhook
+    # can't be processed by a mismatched client.
+    if isinstance(media_server_client, PlexClient):
+        app.router.add_post('/webhook/plex', handle_plex)
+    elif media_server_client is not None:
+        app.router.add_post('/webhook/jellyfin', handle_jellyfin)
     
     # Register Admin UI and API
     register_admin_routes(

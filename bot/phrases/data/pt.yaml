@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Me recomenda algo
   download_ready:
-  - 🎉 *{title}* ({type}) está pronto! [▶️ Assistir no Jellyfin]({url})
+  - 🎉 *{title}* ({type}) está pronto! [▶️ Assistir no {server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) foi baixado!

@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class JellyfinClient:
+    display_name = "Jellyfin"
+
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
@@ -23,11 +25,14 @@ class JellyfinClient:
         }
         self.db = None
 
-    def get_watched_items(self, user_id: str) -> List[str]:
+    def get_watched_items(self, user_media_config: dict) -> List[str]:
         """
-        Fetch watched movies and TV shows for a Jellyfin user
-        Returns list of titles
+        Fetch watched movies and TV shows for a Jellyfin user.
+        `user_media_config` is the user's `media_server` config dict; the
+        Jellyfin user UUID is read from its `user_id` field.
+        Returns list of titles.
         """
+        user_id = (user_media_config or {}).get('user_id')
         if not user_id:
             logger.warning("No Jellyfin user ID provided")
             return []

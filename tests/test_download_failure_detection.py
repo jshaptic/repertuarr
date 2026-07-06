@@ -100,7 +100,7 @@ async def _exercise_webhook_events(tmp_path):
     runner = await start_webhook_server(
         config={"webhook_port": port},
         db=db,
-        jellyfin_client=None,
+        media_server_client=None,
         bot_app=bot_app,
         users_config=users,
         messenger_name="telegram-main",

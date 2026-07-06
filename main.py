@@ -40,14 +40,14 @@ async def run_telegram_bot(messenger_conf, bot_config, auth_func):
         .pool_timeout(30.0)
         .build()
     )
-    db, jellyfin_client = telegram_bot.register_handlers(app, bot_config, auth_func)
+    db, media_server_client = telegram_bot.register_handlers(app, bot_config, auth_func)
 
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
     logger.info("Started polling for Telegram Bot")
 
-    return app, db, jellyfin_client
+    return app, db, media_server_client
 
 
 async def main():
@@ -102,9 +102,9 @@ async def main():
     # ── Build a flat bot_config dict used by telegram_bot and webhook ──
     # Use the first configured Sonarr / Radarr / Jellyfin for now.
     # (In the future, users could specify which instance they prefer.)
-    first_sonarr    = next(iter(sonarrs_map.values()), {})
-    first_radarr    = next(iter(radarrs_map.values()), {})
-    first_jellyfin  = next(iter(media_servers_map.values()), {})
+    first_sonarr       = next(iter(sonarrs_map.values()), {})
+    first_radarr       = next(iter(radarrs_map.values()), {})
+    first_media_server = next(iter(media_servers_map.values()), {})
 
     bot_section = config.get('bot')
     if not bot_section:
@@ -135,8 +135,7 @@ async def main():
         'sonarr_key': first_sonarr.get('key'),
         'radarr_url': first_radarr.get('url'),
         'radarr_key': first_radarr.get('key'),
-        'jellyfin_url': first_jellyfin.get('url'),
-        'jellyfin_api_key': first_jellyfin.get('api_key'),
+        'media_server': first_media_server,
         'webhook_port': bot_section.get('webhook_port', 8585),
         'recommendation_exclude_ttl_hours': int(ttl_hours),
         'recommendation_carousel_count': carousel_count,
@@ -164,13 +163,13 @@ async def main():
 
     result = await run_telegram_bot(telegram_conf, bot_config, check_telegram_auth)
     if result:
-        app_telegram, media_db, media_jellyfin = result
+        app_telegram, media_db, media_server_client = result
 
         # Start webhook server for Radarr/Sonarr notifications
         webhook_runner = await start_webhook_server(
             config=bot_config,
             db=media_db,
-            jellyfin_client=media_jellyfin,
+            media_server_client=media_server_client,
             bot_app=app_telegram,
             users_config=users_list,
             messenger_name=messenger_name,

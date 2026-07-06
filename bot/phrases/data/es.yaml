@@ -68,6 +68,6 @@ shared:
   recommend_button:
   - Recomiéndame algo
   download_ready:
-  - 🎉 *{title}* ({type}) está lista! [▶️ Ver en Jellyfin]({url})
+  - 🎉 *{title}* ({type}) está lista! [▶️ Ver en {server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) se ha descargado!

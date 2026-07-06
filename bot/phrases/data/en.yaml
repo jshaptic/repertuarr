@@ -146,7 +146,7 @@ shared:
   download_started:
   - '{type} *{title}* started downloading. I''ll let you know when it''s ready.'
   download_ready:
-  - 🎉 {type} *{title}* is ready to watch! [Play on Jellyfin]({url})
+  - 🎉 {type} *{title}* is ready to watch! [Play on {server}]({url})
   download_ready_no_url:
   - 🎉 {type} *{title}* has been downloaded!
   download_failed:

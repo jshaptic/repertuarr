@@ -83,6 +83,6 @@ shared:
   recommend_button:
   - Порекомендуй что-нибудь
   download_ready:
-  - 🎉 *{title}* ({type}) готов! [▶️ Смотреть в Jellyfin]({url})
+  - 🎉 *{title}* ({type}) готов! [▶️ Смотреть в {server}]({url})
   download_ready_no_url:
   - 🎉 *{title}* ({type}) загружен!
