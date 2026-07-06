@@ -3,6 +3,8 @@ import json
 from aiohttp import web
 import logging
 
+from bot.version import __version__
+
 logger = logging.getLogger(__name__)
 
 def register_admin_routes(
@@ -201,6 +203,9 @@ def register_admin_routes(
             logger.error(f"Error fetching exclusions: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def api_version(request):
+        return web.json_response({"version": __version__})
+
     # Add API routes
     app.router.add_get('/admin/api/requests', api_requests)
     app.router.add_get('/admin/api/feedback', api_feedback)
@@ -212,6 +217,7 @@ def register_admin_routes(
     app.router.add_get('/admin/api/users', api_users)
     app.router.add_get('/admin/api/chat', api_chat)
     app.router.add_get('/admin/api/exclusions', api_exclusions)
+    app.router.add_get('/admin/api/version', api_version)
     
     # Define static files directory
     base_dir = os.path.dirname(os.path.abspath(__file__))

@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const refreshBtn = document.getElementById('refresh-btn');
     const refreshIcon = document.getElementById('refresh-icon');
     const lastRefreshedEl = document.getElementById('last-refreshed');
+    const appVersionEl = document.getElementById('app-version');
 
     // Modal elements
     const modal = document.getElementById('llm-modal');
@@ -126,6 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fetchData();
+    loadVersion();
 
     /** user_id → display name from the last users fetch. */
     let userNameById = {};
@@ -174,6 +176,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error fetching data:', error);
+        }
+    }
+
+    async function loadVersion() {
+        try {
+            const res = await fetch('/admin/api/version');
+            const data = await res.json();
+            appVersionEl.textContent = `v${data.version}`;
+        } catch (error) {
+            console.error('Error fetching version:', error);
         }
     }
 
