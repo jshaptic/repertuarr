@@ -13,6 +13,7 @@ THINKING_ADD_MEDIA = "thinking_add_media"
 UNKNOWN_INTENT = "unknown_intent"
 REQUEST_ERROR = "request_error"
 LLM_NOT_CONFIGURED = "llm_not_configured"
+IMAGE_DOWNLOAD_ERROR = "image_download_error"
 
 # Inquiry / recommend
 INQUIRY_ERROR = "inquiry_error"

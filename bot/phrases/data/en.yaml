@@ -81,6 +81,8 @@ shared:
   - ❌ Something went wrong processing your request.
   llm_not_configured:
   - ⚠️ LLM not configured. Cannot process request.
+  image_download_error:
+  - ❌ Could not download the image from Telegram. Please try again.
   inquiry_error:
   - ❌ Error generating response.
   recommend_failed:

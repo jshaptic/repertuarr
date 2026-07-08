@@ -17,4 +17,12 @@ Intents:
    - Trivia and factual questions: "who played X?", "who directed Dune?", "when does season 3 air?", "what is that movie where...?" (memory-jogging), "do you know...".
    - Casual chat and anything that is not adding media or requesting titles.
 
-Extract the intent and relevant slot values (title, query, media_type).
+Image inputs:
+- When the user attaches an image, always populate `image_description` with a brief summary of what is visible.
+- If the caption/text is present, treat it as the primary hint for intent and slot values (`query`, `title`).
+- Movie/show poster, DVD cover, or title card with a clear title → usually `ADD_MEDIA` (extract `title` and `media_type`).
+- Scene still, TV screenshot, actor photo, or "what is this?" style question → usually `INQUIRY`.
+- "Like this", mood board, or explicit recommendation request with a reference image → `RECOMMEND`.
+- Photo-only with a clear poster/title and no caption → default to `ADD_MEDIA` when a title can be read from the image.
+
+Extract the intent and relevant slot values (title, query, media_type, image_description).

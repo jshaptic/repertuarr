@@ -38,12 +38,21 @@ from bot.recommendation_prompt import (
     build_feedback_message,
     build_recommendation_input_messages,
     build_system_message,
+    append_image_message,
 )
 from bot.recommendation_filters import build_candidate_groups_for_request
 from bot.filter_planner import run_filter_planner
 from bot.inquiry_agent import run_inquiry
 from bot.arr_add import ArrAddNotFoundError, ArrAlreadyManagedError, submit_arr_add
 from bot.telegram_notify import notify_request_queued
+from bot.telegram_image import (
+    TelegramImageDownloadError,
+    apply_multimodal_to_last_user_message,
+    history_text_for_image,
+    parse_incoming_message,
+    redact_image_payload,
+    session_summary_for_incoming,
+)
 logger = logging.getLogger(__name__)
 
 def load_prompt(prompt_config: dict, **kwargs):
@@ -92,9 +101,11 @@ def register_handlers(app: Application, config: dict, auth_func):
     custom_pool_candidates = config.get('custom_pool_candidates', 50)
     inquiry_max_tool_iterations = config.get('inquiry_max_tool_iterations', 4)
 
-    def get_agent_llm(agent_type: str):
+    def get_agent_llm(agent_type: str, *, use_vision: bool = False):
         prompt_cfg = agent_prompts.get(agent_type, {})
-        llm_name = prompt_cfg.get('llm')
+        llm_name = prompt_cfg.get('vision_llm') if use_vision else None
+        if not llm_name:
+            llm_name = prompt_cfg.get('llm')
         cfg = llm_configs.get(llm_name) if llm_name else (llms[0] if llms else {})
         client_instance = openai_clients.get(cfg.get('api_key')) if cfg else None
         return cfg, client_instance
@@ -230,44 +241,69 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
             return
 
-        user_text = update.message.text
-        logger.info(f"Received message: {user_text}")
+        try:
+            incoming = await parse_incoming_message(update, context)
+        except TelegramImageDownloadError:
+            await reply_bot_text(
+                update, prefs, phrase_keys.IMAGE_DOWNLOAD_ERROR,
+                add_to_history=add_to_history, context=context,
+            )
+            return
+
+        if not incoming.has_image and not incoming.text.strip():
+            return
+
+        user_text = incoming.text
+        history_text = (
+            history_text_for_image(user_text) if incoming.has_image else user_text
+        )
+        logger.info(
+            "Received message: text=%r has_image=%s",
+            user_text,
+            incoming.has_image,
+        )
 
         session_id = str(uuid.uuid4())
         session_start = time.time()
         detected_intent = None
         session_status = 'completed'
 
-        db.create_session(session_id, update.effective_user.id, user_text)
+        db.create_session(session_id, update.effective_user.id, session_summary_for_incoming(incoming))
         context.user_data['session_id'] = session_id
+        context.user_data['incoming_image'] = incoming.image_data_url
+        context.user_data['incoming_text'] = incoming.text
         ctx_token = set_session_id(session_id)
 
-        # Add user message to history
-        add_to_history(update, context, "user", user_text, update.message)
+        add_to_history(update, context, "user", history_text, update.message)
 
         try:
-            if is_recommend_trigger(user_text, prefs):
+            if user_text and is_recommend_trigger(user_text, prefs):
                 detected_intent = 'RECOMMEND'
                 await handle_recommend_request(
-                    update, context, IntentResponse(intent='RECOMMEND', query=None),
+                    update, context,
+                    IntentResponse(intent='RECOMMEND', query=None),
                 )
                 return
 
-            # 1. Classify with LLM
-            # Build messages: System + History
             system_content = load_prompt(agent_prompts.get('intent', {}))
             messages = [{"role": "system", "content": system_content}]
-            
-            # History from DB already includes the user message stored above.
             messages.extend(get_llm_history(update.effective_user.id))
-            
+
+            if incoming.has_image and incoming.image_data_url:
+                messages = apply_multimodal_to_last_user_message(
+                    messages,
+                    user_text,
+                    incoming.image_data_url,
+                    api="chat",
+                )
+
             logger.info("Sending LLM Request (Intent)")
-            
+
             start_time = time.time()
-            llm_cfg, current_client = get_agent_llm('intent')
+            llm_cfg, current_client = get_agent_llm('intent', use_vision=incoming.has_image)
             if not current_client:
                 raise ValueError("No OpenAI client available for intent classification")
-            
+
             kwargs = build_llm_kwargs(llm_cfg,
                 model=llm_cfg.get('model', 'gpt-4o'),
                 messages=messages,
@@ -275,18 +311,26 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
             response = current_client.beta.chat.completions.parse(**kwargs)
             duration_ms = int((time.time() - start_time) * 1000)
-            
+
             result = response.choices[0].message.parsed
             logger.info(f"LLM Result Parsed: {result}")
             detected_intent = result.intent
+
+            if incoming.has_image and result.image_description:
+                enriched_history = history_text_for_image(user_text, result.image_description)
+                db.update_chat_message_text(
+                    update.effective_chat.id,
+                    update.message.message_id,
+                    enriched_history,
+                )
 
             log_llm_call(
                 db,
                 session_id=session_id,
                 user_id=update.effective_user.id,
-                user_message=user_text,
+                user_message=history_text,
                 prompt_name='intent',
-                kwargs=kwargs,
+                kwargs=redact_image_payload(kwargs),
                 response=response,
                 parsed=result,
                 duration_ms=duration_ms,
@@ -311,6 +355,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                 add_to_history=add_to_history, context=context,
             )
         finally:
+            context.user_data.pop('incoming_image', None)
+            context.user_data.pop('incoming_text', None)
             reset_session_id(ctx_token)
             if context.user_data.get('session_status') == 'failed':
                 session_status = 'failed'
@@ -318,24 +364,31 @@ def register_handlers(app: Application, config: dict, auth_func):
             db.complete_session(session_id, detected_intent, session_status, session_duration_ms)
 
     async def handle_inquiry_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
-        user_text = update.message.text
+        incoming_text = context.user_data.get('incoming_text', '')
+        incoming_image = context.user_data.get('incoming_image')
+        user_text = incoming_text or data.query or data.image_description or ''
         logger.info(f"Handling inquiry for: {user_text}")
-        
+
         prefs = _user_prefs(context)
         user_lang = prefs.get('language', 'en')
         await send_thinking_message(update, prefs, phrase_keys.THINKING_INQUIRY)
-        
+
         try:
-            # Build messages: System + History
             system_content = load_prompt(
                 agent_prompts.get('inquiry', {}),
                 language=user_lang,
                 has_tmdb_tools=bool(tmdb_client),
             )
             messages = [{"role": "system", "content": system_content}]
-
-            # Add history from DB
             messages.extend(get_llm_history(update.effective_user.id))
+
+            if incoming_image:
+                messages = apply_multimodal_to_last_user_message(
+                    messages,
+                    user_text,
+                    incoming_image,
+                    api="responses",
+                )
 
             logger.info(f"Sending LLM Request (Inquiry)")
 
@@ -377,7 +430,9 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
 
     async def handle_recommend_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
-        query = data.query or 'something good'
+        incoming_text = context.user_data.get('incoming_text', '')
+        incoming_image = context.user_data.get('incoming_image')
+        query = data.query or incoming_text or data.image_description or 'something good'
         logger.info(f"Generating recommendations for: {query}")
         
         prefs = _user_prefs(context)
@@ -471,6 +526,13 @@ def register_handlers(app: Application, config: dict, auth_func):
                  feedback_message,
                  recommendation_prompt,
              )
+             if incoming_image:
+                 image_prompt = incoming_text or data.image_description or "Reference image from the user."
+                 recommendation_input = append_image_message(
+                     recommendation_input,
+                     image_prompt,
+                     incoming_image,
+                 )
              logger.info("Sending LLM Request (Recommend)")
              
              start_time = time.time()
@@ -495,7 +557,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                  user_id=update.effective_user.id,
                  user_message=query,
                  prompt_name='recommend',
-                 kwargs=kwargs,
+                 kwargs=redact_image_payload(kwargs),
                  response=response,
                  parsed=parsed_response,
                  duration_ms=duration_ms,
@@ -1132,7 +1194,10 @@ def register_handlers(app: Application, config: dict, auth_func):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("clear", clear_chat))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, handle_message))
+    app.add_handler(MessageHandler(
+        (filters.PHOTO | (filters.TEXT & ~filters.COMMAND)) & filters.UpdateType.MESSAGE,
+        handle_message,
+    ))
     app.add_handler(MessageHandler(filters.TEXT & filters.UpdateType.EDITED_MESSAGE, handle_edited_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
     

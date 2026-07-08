@@ -74,3 +74,12 @@ def build_recommendation_input_messages(
         if content:
             messages.append({"role": "user", "content": content})
     return messages
+
+
+def append_image_message(messages: List[dict], text: str, image_data_url: str) -> List[dict]:
+    """Append a multimodal user message with a reference image for recommendations."""
+    from bot.telegram_image import build_responses_user_message
+
+    updated = list(messages)
+    updated.append(build_responses_user_message(text, image_data_url))
+    return updated

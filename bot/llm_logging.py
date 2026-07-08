@@ -10,6 +10,7 @@ import logging
 from typing import Any, Optional
 
 from bot.llm_pricing import calculate_cost, extract_token_usage
+from bot.telegram_image import redact_image_payload
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ def log_llm_call(
     llm_name: Optional[str] = None,
 ) -> None:
     """Log an LLM call with processed and raw request/response data."""
+    safe_kwargs = redact_image_payload(kwargs)
     usage = extract_token_usage(response)
     tokens = usage.total_tokens
     cost_usd = calculate_cost(usage, pricing)
@@ -93,9 +95,9 @@ def log_llm_call(
             user_message=user_message,
             session_id=session_id,
             prompt_name=prompt_name,
-            llm_request=build_processed_request(kwargs),
+            llm_request=build_processed_request(safe_kwargs),
             llm_response=build_processed_response(parsed),
-            raw_request=serialize_llm_kwargs(kwargs),
+            raw_request=serialize_llm_kwargs(safe_kwargs),
             raw_response=serialize_llm_response(response),
             duration_ms=duration_ms,
             model=model,

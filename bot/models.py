@@ -6,6 +6,10 @@ class IntentResponse(BaseModel):
     media_type: Literal['movie', 'series'] = Field(default='movie', description="The type of media (movie or series/show)")
     title: Optional[str] = Field(default=None, description="Title of the media to add (for ADD_MEDIA)")
     query: Optional[str] = Field(default=None, description="Search query or user's question (for RECOMMEND and INQUIRY)")
+    image_description: Optional[str] = Field(
+        default=None,
+        description="Brief description of what is visible in the attached image (poster, scene, actor, etc.)",
+    )
 
 class RecommendationFilters(BaseModel):
     media_type: Literal['movie', 'tv'] = Field(default='movie', description="Media type the user constrained the request to; default to movie when unclear")
