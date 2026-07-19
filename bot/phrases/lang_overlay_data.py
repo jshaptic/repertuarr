@@ -2220,6 +2220,24 @@ LANG_OVERLAYS: Dict[str, Dict[str, Any]] = {
             "recommend_button": [
                 "Порекомендуй что-нибудь",
             ],
+            "thinking_list_extract": [
+                "Читаю ссылку и собираю названия...",
+            ],
+            "list_extract_failed": [
+                "❌ Не удалось прочитать названия по этой ссылке. Попробуй вставить названия текстом.",
+            ],
+            "list_extract_empty": [
+                "❓ На этой странице не нашлось фильмов или сериалов.",
+            ],
+            "multi_add_misses": [
+                "Не удалось найти совпадения для: {titles}",
+            ],
+            "add_all_done": [
+                "Добавление всех завершено: в очереди {queued}, пропущено {skipped}, ошибок {failed}.",
+            ],
+            "inline_add_all": [
+                "Добавить все",
+            ],
             "download_ready": [
                 "🎉 *{title}* ({type}) готов! [▶️ Смотреть в {server}]({url})",
             ],

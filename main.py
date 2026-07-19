@@ -129,6 +129,11 @@ async def main():
         raise ValueError(
             "bot.inquiry_max_tool_iterations must be a positive integer"
         )
+    add_media_max_titles = bot_section.get('add_media_max_titles', 20)
+    if not isinstance(add_media_max_titles, int) or add_media_max_titles <= 0:
+        raise ValueError(
+            "bot.add_media_max_titles must be a positive integer"
+        )
 
     bot_config = {
         'sonarr_url': first_sonarr.get('url'),
@@ -141,6 +146,7 @@ async def main():
         'recommendation_carousel_count': carousel_count,
         'custom_pool_candidates': custom_pool_candidates,
         'inquiry_max_tool_iterations': inquiry_max_tool_iterations,
+        'add_media_max_titles': add_media_max_titles,
         'download_monitor': bot_section.get('download_monitor', {}),
         'llms': config.get('llms', []),
         'agent': config.get('agent', {}),

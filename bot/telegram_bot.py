@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes, CommandHandler, Application, MessageHandl
 from openai import OpenAI
 import chevron
 import os
-from bot.models import IntentResponse, RecommendationResponse
+from bot.models import AddMediaItem, IntentResponse, RecommendationResponse
 from bot.database import Database
 from bot.carousel_feedback_buttons import (
     STYLE_DANGER,
@@ -43,6 +43,14 @@ from bot.recommendation_prompt import (
 from bot.recommendation_filters import build_candidate_groups_for_request
 from bot.filter_planner import run_filter_planner
 from bot.inquiry_agent import run_inquiry
+from bot.list_extractor import run_list_extract
+from bot.add_media import (
+    cap_add_items,
+    is_item_already_available,
+    normalize_add_items,
+    provider_id_for_item,
+    resolve_add_candidates,
+)
 from bot.arr_add import ArrAddNotFoundError, ArrAlreadyManagedError, submit_arr_add
 from bot.telegram_notify import notify_request_queued
 from bot.telegram_image import (
@@ -100,6 +108,7 @@ def register_handlers(app: Application, config: dict, auth_func):
     recommendation_carousel_count = config['recommendation_carousel_count']
     custom_pool_candidates = config.get('custom_pool_candidates', 50)
     inquiry_max_tool_iterations = config.get('inquiry_max_tool_iterations', 4)
+    add_media_max_titles = config.get('add_media_max_titles', 20)
 
     def get_agent_llm(agent_type: str, *, use_vision: bool = False):
         prompt_cfg = agent_prompts.get(agent_type, {})
@@ -587,41 +596,118 @@ def register_handlers(app: Application, config: dict, auth_func):
              )
 
     async def handle_add_media_request(update: Update, context: ContextTypes.DEFAULT_TYPE, data: IntentResponse):
-        title = data.title
-        media_type = data.media_type # Default to movie
         prefs = _user_prefs(context)
-        
-        if not title:
+        user_info = context.user_data.get('user_info', {})
+        items = normalize_add_items(data)
+
+        if not items and data.source_url:
+            await send_thinking_message(update, prefs, phrase_keys.THINKING_LIST_EXTRACT)
+            try:
+                system_content = load_prompt(
+                    agent_prompts.get('list_extract', {}),
+                    source_url=data.source_url,
+                    max_titles=add_media_max_titles,
+                )
+                messages = [{"role": "system", "content": system_content}]
+                messages.append({
+                    "role": "user",
+                    "content": f"Extract movie and TV titles from: {data.source_url}",
+                })
+                llm_cfg, current_client = get_agent_llm('list_extract')
+                if not current_client:
+                    raise ValueError("No OpenAI client available for list_extract")
+                parsed = run_list_extract(
+                    client=current_client,
+                    llm_cfg=llm_cfg,
+                    build_llm_kwargs=build_llm_kwargs,
+                    db=db,
+                    messages=messages,
+                    session_id=context.user_data['session_id'],
+                    user_id=update.effective_user.id,
+                    user_text=data.source_url,
+                    max_iterations=inquiry_max_tool_iterations,
+                )
+                if not parsed:
+                    raise ValueError("List extract returned no parsed response")
+                items = [
+                    item if isinstance(item, AddMediaItem) else AddMediaItem.model_validate(item)
+                    for item in (parsed.items or [])
+                ]
+            except Exception as e:
+                context.user_data['session_status'] = 'failed'
+                logger.error(f"List extract error: {e}")
+                await reply_bot_text(
+                    update, prefs, phrase_keys.LIST_EXTRACT_FAILED,
+                    add_to_history=add_to_history, context=context,
+                )
+                return
+
+        items = cap_add_items(items, add_media_max_titles)
+
+        if not items:
+            phrase = (
+                phrase_keys.LIST_EXTRACT_EMPTY
+                if data.source_url
+                else phrase_keys.ADD_MEDIA_NO_TITLE
+            )
             await reply_bot_text(
-                update, prefs, phrase_keys.ADD_MEDIA_NO_TITLE,
+                update, prefs, phrase,
                 add_to_history=add_to_history, context=context,
             )
             return
 
         await send_thinking_message(update, prefs, phrase_keys.THINKING_ADD_MEDIA)
 
-        logger.info(f"Initiating search for '{title}' as {media_type}")
+        if len(items) == 1:
+            item = items[0]
+            media_type = item.media_type
+            title = item.title
+            logger.info(f"Initiating search for '{title}' as {media_type}")
+            if media_type == 'movie':
+                url, key = resolve_arr(user_info, 'movie')
+                if not url:
+                    await reply_bot_text(update, prefs, phrase_keys.NO_RADARR)
+                    return
+                await search_and_display(update, context, title, url, key, 'movie')
+            elif media_type == 'series':
+                url, key = resolve_arr(user_info, 'series')
+                if not url:
+                    await reply_bot_text(update, prefs, phrase_keys.NO_SONARR)
+                    return
+                await search_and_display(update, context, title, url, key, 'series')
+            else:
+                await reply_bot_text(
+                    update, prefs, phrase_keys.AMBIGUOUS_MEDIA_TYPE, title=title,
+                    add_to_history=add_to_history, context=context,
+                )
+            return
 
-        user_info = context.user_data.get('user_info', {})
+        logger.info("Initiating multi-title add for %d item(s)", len(items))
+        resolved, misses, config_errors = await asyncio.to_thread(
+            resolve_add_candidates, db, items, resolve_arr, user_info,
+        )
+        for err in config_errors:
+            logger.warning("Multi-add config: %s", err)
+        if misses:
+            await reply_bot_text(
+                update, prefs, phrase_keys.MULTI_ADD_MISSES,
+                titles=", ".join(misses),
+                add_to_history=add_to_history, context=context,
+            )
+        if not resolved:
+            await reply_bot_text(
+                update, prefs, phrase_keys.NO_SEARCH_RESULTS,
+                title=items[0].title, type="Library",
+                add_to_history=add_to_history, context=context,
+            )
+            return
 
-        if media_type == 'movie':
-            url, key = resolve_arr(user_info, 'movie')
-            if not url:
-                await reply_bot_text(update, prefs, phrase_keys.NO_RADARR)
-                return
-            await search_and_display(update, context, title, url, key, 'movie')
-
-        elif media_type == 'series':
-            url, key = resolve_arr(user_info, 'series')
-            if not url:
-                await reply_bot_text(update, prefs, phrase_keys.NO_SONARR)
-                return
-            await search_and_display(update, context, title, url, key, 'series')
-        else:
-             await reply_bot_text(
-                 update, prefs, phrase_keys.AMBIGUOUS_MEDIA_TYPE, title=title,
-                 add_to_history=add_to_history, context=context,
-             )
+        carousel_type = resolved[0].get('_batch_media_type', 'movie')
+        await start_carousel(update, context, resolved, carousel_type, batch=True)
+        add_to_history(
+            update, context, "assistant",
+            f"Shared multi-add carousel with {len(resolved)} title(s)",
+        )
 
     async def search_and_display(update: Update, context: ContextTypes.DEFAULT_TYPE, title: str, base_url: str, api_key: str, type_: str):
         prefs = _user_prefs(context)
@@ -731,7 +817,20 @@ def register_handlers(app: Application, config: dict, auth_func):
             
         return f"{prefix}{title}"
 
-    async def send_carousel_card(update: Update, context: ContextTypes.DEFAULT_TYPE, results: list, idx: int, type_: str, is_new: bool = False):
+    def _item_media_type(item, fallback: str) -> str:
+        if isinstance(item, dict) and item.get('_batch_media_type') in ('movie', 'series'):
+            return item['_batch_media_type']
+        return fallback
+
+    async def send_carousel_card(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        results: list,
+        idx: int,
+        type_: str,
+        is_new: bool = False,
+        batch: bool = False,
+    ):
         """Render the card at results[idx]. Mutates results in place on lazy
         metadata loads; the caller is responsible for persisting carousel state.
         Returns the sent/edited Telegram Message (or None)."""
@@ -740,6 +839,7 @@ def register_handlers(app: Application, config: dict, auth_func):
 
         item = results[idx]
         total = len(results)
+        card_type = _item_media_type(item, type_)
         
         # LAZY LOADING METADATA
         # Check if we have an ID (Radarr/Sonarr ID or TMDB/TVDB ID). 
@@ -747,14 +847,14 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Use getattr for Pydantic, dict.get for dicts
         lookup_title = None  # Will be set to original_title where available
         if isinstance(item, dict):
-            id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
+            id_val = item.get('tmdbId') if card_type == 'movie' else item.get('tvdbId')
             t = item.get('title', 'N/A')
             y = item.get('year', 'N/A')
             overview = item.get('overview', 'No description available')
             lookup_title = item.get('original_title')  # Use original title for Radarr/Sonarr search
         else:
             # Pydantic model from recommendations
-            id_val = getattr(item, 'tmdb_id', None) if type_ == 'movie' else None
+            id_val = getattr(item, 'tmdb_id', None) if card_type == 'movie' else None
             t = item.title
             y = item.year
             overview = item.overview
@@ -763,12 +863,14 @@ def register_handlers(app: Application, config: dict, auth_func):
             # Need to lookup — use original_title for API search if available
             search_title = lookup_title or t
             logger.info(f"Lazy loading metadata for '{t}' (searching as '{search_title}')")
-            full_item = await lookup_metadata(search_title, y if isinstance(y, int) else 0, type_, context.user_data.get('user_info', {}))
+            full_item = await lookup_metadata(search_title, y if isinstance(y, int) else 0, card_type, context.user_data.get('user_info', {}))
             
             if full_item:
                 # Preserve localized display fields from LLM
                 full_item['_display_title'] = t
                 full_item['_display_overview'] = overview
+                if isinstance(item, dict) and item.get('_batch_media_type'):
+                    full_item['_batch_media_type'] = item['_batch_media_type']
                 results[idx] = full_item
                 item = full_item
             else:
@@ -781,8 +883,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         
         # Now item is a dict (either from API or lazy-loaded) or a Pydantic model (if lookup failed and it started as one)
         # Extract display fields
+        card_type = _item_media_type(item, type_)
         if isinstance(item, dict):
-            id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
+            id_val = item.get('tmdbId') if card_type == 'movie' else item.get('tvdbId')
             t = item.get('_display_title', item.get('title', 'N/A'))
             y = item.get('year', 'N/A')
             overview = item.get('_display_overview', item.get('overview', 'No description available'))
@@ -813,9 +916,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         # Row 2: add/download state
         # Row 3: carousel navigation
         if isinstance(item, dict):
-            id_val = item.get('tmdbId') if type_ == 'movie' else item.get('tvdbId')
+            id_val = item.get('tmdbId') if card_type == 'movie' else item.get('tvdbId')
         else:
-            id_val = getattr(item, 'tmdb_id', None) if type_ == 'movie' else None
+            id_val = getattr(item, 'tmdb_id', None) if card_type == 'movie' else None
 
         # Check if item is already available
         media_url = None
@@ -823,9 +926,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         if id_val:
             # Check the media server first — use provider ID for precise matching
             if media_server_client:
-                tmdb_id = str(id_val) if type_ == 'movie' else None
-                tvdb_id = str(id_val) if type_ == 'series' else None
-                media_url = media_server_client.search_item(t, type_, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
+                tmdb_id = str(id_val) if card_type == 'movie' else None
+                tvdb_id = str(id_val) if card_type == 'series' else None
+                media_url = media_server_client.search_item(t, card_type, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
                 if media_url:
                     already_available = True
             # Fallback: check if already managed by Radarr/Sonarr (id > 0)
@@ -833,7 +936,7 @@ def register_handlers(app: Application, config: dict, auth_func):
             if not already_available and arr_id > 0:
                 already_available = True
         
-        feedback_content_id = db.normalize_content_id(type_, str(id_val or "0"), t)
+        feedback_content_id = db.normalize_content_id(card_type, str(id_val or "0"), t)
         feedback_state = {'watched': False, 'feedback': None, 'excluded': False}
         if update.effective_user:
             feedback_state = db.get_content_feedback_state(update.effective_user.id, feedback_content_id)
@@ -843,10 +946,10 @@ def register_handlers(app: Application, config: dict, auth_func):
         excluded = bool(feedback_state.get('excluded'))
 
         # First row: feedback actions
-        ignore_data = make_safe_callback_data("IGNORE", type_, str(id_val or "0"), t)
-        watched_data = make_safe_callback_data("WATCHED", type_, str(id_val or "0"), t)
-        disliked_data = make_safe_callback_data("DISLIKED", type_, str(id_val or "0"), t)
-        liked_data = make_safe_callback_data("LIKED", type_, str(id_val or "0"), t)
+        ignore_data = make_safe_callback_data("IGNORE", card_type, str(id_val or "0"), t)
+        watched_data = make_safe_callback_data("WATCHED", card_type, str(id_val or "0"), t)
+        disliked_data = make_safe_callback_data("DISLIKED", card_type, str(id_val or "0"), t)
+        liked_data = make_safe_callback_data("LIKED", card_type, str(id_val or "0"), t)
 
         rows = [[
             feedback_button("🙈", ignore_data, selected=excluded, selected_style=STYLE_PRIMARY),
@@ -855,11 +958,21 @@ def register_handlers(app: Application, config: dict, auth_func):
             feedback_button("👁️👍", liked_data, selected=watched and feedback == "like", selected_style=STYLE_SUCCESS),
         ]]
 
-        # Second row: Add button only
+        # Second row: Add / Add all
+        add_row = []
         if id_val:
             add_label = get_phrase(prefs, phrase_keys.INLINE_ADDED) if already_available else get_phrase(prefs, phrase_keys.INLINE_ADD)
-            add_button = InlineKeyboardButton(add_label, callback_data="NOP" if already_available else f"ADD|{type_}|{id_val}")
-            rows.append([add_button])
+            add_row.append(InlineKeyboardButton(
+                add_label,
+                callback_data="NOP" if already_available else f"ADD|{card_type}|{id_val}",
+            ))
+        if batch and total > 1:
+            add_row.append(InlineKeyboardButton(
+                get_phrase(prefs, phrase_keys.INLINE_ADD_ALL),
+                callback_data="ADD_ALL",
+            ))
+        if add_row:
+            rows.append(add_row)
             
         # Third row: Navigation
         nav_row = []
@@ -916,9 +1029,17 @@ def register_handlers(app: Application, config: dict, auth_func):
             logger.error(f"Error sending/editing card: {ex}")
         return None
 
-    async def start_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE, items: list, type_: str):
+    async def start_carousel(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        items: list,
+        type_: str,
+        batch: bool = False,
+    ):
         """Send a fresh carousel card and persist its state keyed by message id."""
-        sent = await send_carousel_card(update, context, items, 0, type_, is_new=True)
+        sent = await send_carousel_card(
+            update, context, items, 0, type_, is_new=True, batch=batch,
+        )
         if sent:
             db.save_carousel_state(
                 chat_id=sent.chat_id,
@@ -928,6 +1049,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                 results=items,
                 index=0,
                 session_id=context.user_data.get('session_id'),
+                batch=1 if batch else 0,
             )
         return sent
 
@@ -956,6 +1078,7 @@ def register_handlers(app: Application, config: dict, auth_func):
 
             results = state['results']
             type_ = state['media_type']
+            batch = bool(state.get('batch'))
             idx = state['idx']
             total = len(results)
 
@@ -964,7 +1087,9 @@ def register_handlers(app: Application, config: dict, auth_func):
             elif direction == "PREV":
                 idx = max(0, idx - 1)
 
-            await send_carousel_card(update, context, results, idx, type_, is_new=False)
+            await send_carousel_card(
+                update, context, results, idx, type_, is_new=False, batch=batch,
+            )
             # Persist mutated results (lazy-loaded metadata) and the new index
             db.save_carousel_state(
                 chat_id=chat_id,
@@ -974,6 +1099,7 @@ def register_handlers(app: Application, config: dict, auth_func):
                 results=results,
                 index=idx,
                 session_id=state.get('session_id'),
+                batch=1 if batch else 0,
             )
             await query.answer()
             return
@@ -1038,11 +1164,14 @@ def register_handlers(app: Application, config: dict, auth_func):
             if state:
                 results = state['results']
                 type_ = state['media_type']
+                batch = bool(state.get('batch'))
                 idx = state['idx']
                 total = len(results)
                 next_idx = min(total - 1, idx + 1)
 
-                await send_carousel_card(update, context, results, next_idx, type_, is_new=False)
+                await send_carousel_card(
+                    update, context, results, next_idx, type_, is_new=False, batch=batch,
+                )
                 db.save_carousel_state(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -1051,9 +1180,64 @@ def register_handlers(app: Application, config: dict, auth_func):
                     results=results,
                     index=next_idx,
                     session_id=state.get('session_id'),
+                    batch=1 if batch else 0,
                 )
 
             logger.info(f"User {user_id} toggled {feedback_action} for {title}")
+            return
+
+        if data == "ADD_ALL":
+            chat_id = query.message.chat_id
+            message_id = query.message.message_id
+            state = db.get_carousel_state(chat_id, message_id)
+            if not state or not state.get('batch'):
+                await query.answer(get_phrase(prefs, phrase_keys.CAROUSEL_EXPIRED), show_alert=True)
+                return
+
+            await query.answer(get_phrase(prefs, phrase_keys.ADDING_TO_LIBRARY))
+            user_id = update.effective_user.id
+            user_info = context.user_data.get('user_info', {})
+            results = state['results']
+            queued = skipped = failed = 0
+
+            for item in results:
+                if not isinstance(item, dict):
+                    failed += 1
+                    continue
+                media_type = _item_media_type(item, state['media_type'])
+                id_val = provider_id_for_item(item, media_type)
+                if not id_val:
+                    failed += 1
+                    continue
+
+                if is_item_already_available(item, media_type, media_server_client):
+                    skipped += 1
+                    continue
+
+                url, key = resolve_arr(user_info, media_type)
+                if not url:
+                    failed += 1
+                    continue
+                quality_profile = user_info.get(
+                    'radarr' if media_type == 'movie' else 'sonarr', {}
+                ).get('quality_profile')
+                arr_instance = resolve_arr_name(user_info, media_type)
+                status = await queue_arr_add(
+                    query, str(id_val), url, key, media_type,
+                    user_id, quality_profile, prefs, arr_instance,
+                )
+                if status == 'queued':
+                    queued += 1
+                elif status == 'skipped':
+                    skipped += 1
+                else:
+                    failed += 1
+
+            summary = get_phrase(
+                prefs, phrase_keys.ADD_ALL_DONE,
+                queued=queued, skipped=skipped, failed=failed,
+            )
+            await query.message.reply_text(summary)
             return
 
         if not data.startswith("ADD|"): 
@@ -1082,6 +1266,70 @@ def register_handlers(app: Application, config: dict, auth_func):
              quality_profile = user_info.get('sonarr', {}).get('quality_profile')
              arr_instance = resolve_arr_name(user_info, 'series')
              await perform_add(query, id_val, url, key, 'series', user_id, quality_profile, prefs, arr_instance)
+
+    async def queue_arr_add(
+        query,
+        id_val: str,
+        base_url: str,
+        api_key: str,
+        type_: str,
+        user_id: int = None,
+        quality_profile: str = None,
+        prefs: dict = None,
+        arr_instance: str = None,
+    ) -> str:
+        """Add one title without editing the carousel caption.
+
+        Returns 'queued', 'skipped' (already managed), or 'failed'.
+        """
+        try:
+            added_item = await asyncio.to_thread(
+                submit_arr_add,
+                db,
+                type_,
+                id_val,
+                base_url,
+                api_key,
+                quality_profile,
+            )
+        except ArrAlreadyManagedError as already_managed:
+            logger.info("Bulk add skipped; already managed: %s", already_managed)
+            return 'skipped'
+        except ArrAddNotFoundError as not_found:
+            logger.error("Bulk add not found: %s", not_found)
+            return 'failed'
+        except Exception as e:
+            logger.error("Exception during queue_arr_add: %s", e)
+            return 'failed'
+
+        title = added_item.get('title') or 'requested item'
+        request_id = None
+        if user_id:
+            tmdb_id = str(added_item.get('tmdbId') or '') if type_ == 'movie' else None
+            tvdb_id = str(added_item.get('tvdbId') or '') if type_ == 'series' else None
+            request_id = db.add_media_request(
+                telegram_id=user_id,
+                title=title,
+                media_type=type_,
+                tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id,
+                arr_service=arr_service(type_),
+                arr_instance=arr_instance,
+                arr_id=added_item.get('id'),
+            )
+
+        if request_id:
+            await notify_request_queued(
+                db,
+                query.get_bot(),
+                request_id,
+                user_id,
+                prefs or {},
+                title,
+            )
+        return 'queued'
 
     async def perform_add(query, id_val: str, base_url: str, api_key: str, type_: str, user_id: int = None, quality_profile: str = None, prefs: dict = None, arr_instance: str = None):
         try:
@@ -1123,8 +1371,8 @@ def register_handlers(app: Application, config: dict, auth_func):
                         text=f"{query.message.text}\n\n{add_error}",
                         parse_mode='Markdown',
                     )
-            except Exception:
-                pass
+            except Exception as edit_error:
+                logger.error("Failed to edit message after add error: %s", edit_error)
             return
 
         title = added_item.get('title') or 'requested item'

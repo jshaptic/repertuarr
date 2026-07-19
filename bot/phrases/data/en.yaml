@@ -91,6 +91,16 @@ shared:
   - ❌ Error generating recommendations.
   add_media_no_title:
   - ❓ I understood you want to add media, but I couldn't figure out the title.
+  thinking_list_extract:
+  - Reading that link for titles...
+  list_extract_failed:
+  - ❌ Couldn't read titles from that link. Try pasting the titles instead.
+  list_extract_empty:
+  - ❓ I couldn't find any movie or show titles on that page.
+  multi_add_misses:
+  - "Couldn't find matches for: {titles}"
+  add_all_done:
+  - "Add all finished: {queued} queued, {skipped} skipped, {failed} failed."
   no_radarr:
   - ⚠️ No Radarr instance configured for your account.
   no_sonarr:
@@ -109,6 +119,8 @@ shared:
   - Add
   inline_added:
   - ✅ Added
+  inline_add_all:
+  - Add all
   carousel_expired:
   - This carousel has expired.
   unauthorized:

@@ -7,6 +7,9 @@ Intents:
    - If the user says "Add show X" or "series X", it's a series.
    - DEFAULT RULE: If the user just provides a name like "Inception" or "The Office" without keywords, assume it is an 'ADD_MEDIA' request for a 'movie' unless 'series' is implied by context (rare). Defaults to 'movie'.
    - EXCEPTION: A bare PERSON name ("Anne Hathaway", "Christopher Nolan") is NOT a title — that is 'RECOMMEND' (titles featuring that person) or 'INQUIRY' if phrased as a question.
+   - MULTIPLE TITLES: If the user lists several titles in one message (comma-separated, "and", numbered/bulleted list), put EVERY title into `titles` as separate items with the best-guess `media_type` each. Do not pick only one.
+   - URLs: If the user pastes a bare URL or a link that looks like a list/page of movies or shows (IMDb list, Letterboxd list/watchlist, article ranking, etc.), that is 'ADD_MEDIA'. Set `source_url` to the URL and leave `titles` empty so a later step can extract titles from the page. Only use INQUIRY/RECOMMEND for a URL when the user clearly asks a question about the page (e.g. "what is this list?", "summarize this").
+   - Prefer populating `titles` (even for a single title). You may still set legacy `title` + top-level `media_type` for a single-title request.
 
 2. 'RECOMMEND': The user wants a list of movie/show titles — the answer to their message is a set of titles.
    - Explicit keywords are a strong signal: "recommend", "suggest", "advise", "what to watch", "bored", "посоветуй", "что посмотреть".
@@ -19,10 +22,10 @@ Intents:
 
 Image inputs:
 - When the user attaches an image, always populate `image_description` with a brief summary of what is visible.
-- If the caption/text is present, treat it as the primary hint for intent and slot values (`query`, `title`).
-- Movie/show poster, DVD cover, or title card with a clear title → usually `ADD_MEDIA` (extract `title` and `media_type`).
+- If the caption/text is present, treat it as the primary hint for intent and slot values (`query`, `title`, `titles`).
+- Movie/show poster, DVD cover, or title card with a clear title → usually `ADD_MEDIA` (extract `title`/`titles` and `media_type`).
 - Scene still, TV screenshot, actor photo, or "what is this?" style question → usually `INQUIRY`.
 - "Like this", mood board, or explicit recommendation request with a reference image → `RECOMMEND`.
 - Photo-only with a clear poster/title and no caption → default to `ADD_MEDIA` when a title can be read from the image.
 
-Extract the intent and relevant slot values (title, query, media_type, image_description).
+Extract the intent and relevant slot values (title, titles, source_url, query, media_type, image_description).

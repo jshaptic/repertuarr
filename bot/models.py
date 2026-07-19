@@ -1,10 +1,34 @@
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
 
+
+class AddMediaItem(BaseModel):
+    title: str = Field(description="Title of the movie or TV show to add")
+    media_type: Literal['movie', 'series'] = Field(
+        default='movie',
+        description="Whether this title is a movie or a series/show",
+    )
+
+
+class ListExtractResponse(BaseModel):
+    items: List[AddMediaItem] = Field(
+        default_factory=list,
+        description="Movie/TV titles extracted from the source URL",
+    )
+
+
 class IntentResponse(BaseModel):
     intent: Literal['ADD_MEDIA', 'RECOMMEND', 'INQUIRY'] = Field(description="The user's intent")
     media_type: Literal['movie', 'series'] = Field(default='movie', description="The type of media (movie or series/show)")
-    title: Optional[str] = Field(default=None, description="Title of the media to add (for ADD_MEDIA)")
+    title: Optional[str] = Field(default=None, description="Title of the media to add (for ADD_MEDIA; legacy single-title slot)")
+    titles: List[AddMediaItem] = Field(
+        default_factory=list,
+        description="Titles to add for ADD_MEDIA (preferred over title when multiple or explicit)",
+    )
+    source_url: Optional[str] = Field(
+        default=None,
+        description="URL the user pasted that contains media titles to extract (for ADD_MEDIA)",
+    )
     query: Optional[str] = Field(default=None, description="Search query or user's question (for RECOMMEND and INQUIRY)")
     image_description: Optional[str] = Field(
         default=None,

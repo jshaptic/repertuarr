@@ -69,6 +69,7 @@ class ChatMixin:
 
         for stmt in (
             "ALTER TABLE carousel_state ADD COLUMN session_id TEXT",
+            "ALTER TABLE carousel_state ADD COLUMN batch INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 cursor.execute(stmt)
@@ -158,6 +159,7 @@ class ChatMixin:
         results: List[Any],
         index: int = 0,
         session_id: Optional[str] = None,
+        batch: int = 0,
     ) -> None:
         """Persist (or replace) the full state of a carousel card."""
         results_json = json.dumps(results, default=_json_default)
@@ -165,9 +167,12 @@ class ChatMixin:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT OR REPLACE INTO carousel_state
-                (chat_id, message_id, user_id, media_type, idx, results_json, session_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (chat_id, message_id, user_id, media_type, index, results_json, session_id, datetime.now()))
+                (chat_id, message_id, user_id, media_type, idx, results_json, session_id, batch, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            chat_id, message_id, user_id, media_type, index, results_json,
+            session_id, int(batch), datetime.now(),
+        ))
         conn.commit()
         conn.close()
 
@@ -213,6 +218,7 @@ class ChatMixin:
             return None
         state = dict(row)
         state['results'] = json.loads(state.pop('results_json'))
+        state['batch'] = bool(state.get('batch') or 0)
         return state
 
     def update_carousel_index(self, chat_id: int, message_id: int, index: int) -> None:
