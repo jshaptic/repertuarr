@@ -149,8 +149,10 @@ shared:
   - '❌ Sonarr: Unreachable ({error})'
   status_sonarr_not_configured:
   - 'ℹ️ Sonarr: Not configured'
-  clear_chat:
-  - 🧹 Cleared {removed} stored messages. Starting fresh.
+  admin_clear_chat_notify:
+  - 'Your chat history was reset on the server. Please clear this chat in Telegram (⋯ → Clear history) so we stay in sync.'
+  messenger_history_synced:
+  - 'Noticed you cleared the chat — starting fresh on my side too.'
   media_type_movie:
   - Movie
   media_type_show:

@@ -148,6 +148,23 @@ class ChatMixin:
         logger.info(f"Cleared {removed} chat messages for user {user_id}")
         return removed
 
+    def get_history_probe(self, user_id: int) -> Optional[dict]:
+        """Latest (chat_id, message_id) used to probe Telegram history presence."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT chat_id, message_id FROM chat_messages
+            WHERE user_id = ? AND message_id IS NOT NULL
+            ORDER BY id DESC
+            LIMIT 1
+        """, (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return {'chat_id': row['chat_id'], 'message_id': row['message_id']}
+
     # ── Carousel state ──────────────────────────────────────────────
 
     def save_carousel_state(

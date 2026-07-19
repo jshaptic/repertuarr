@@ -53,6 +53,7 @@ from bot.add_media import (
 )
 from bot.arr_add import ArrAddNotFoundError, ArrAlreadyManagedError, submit_arr_add
 from bot.telegram_notify import notify_request_queued
+from bot.chat_maintenance import sync_if_messenger_cleared
 from bot.telegram_image import (
     TelegramImageDownloadError,
     apply_multimodal_to_last_user_message,
@@ -195,10 +196,14 @@ def register_handlers(app: Application, config: dict, auth_func):
         if not user_data: return
         context.user_data['user_info'] = user_data
         prefs = user_data.get('preferences', {})
-        await reply_bot_text(
-            update, prefs, phrase_keys.WELCOME,
-            add_to_history=add_to_history, context=context,
+        messenger_synced = await sync_if_messenger_cleared(
+            db, context.bot, update.effective_user.id,
         )
+        if messenger_synced:
+            # Sync ack is messenger-only; do not persist to Repertuarr transcript.
+            await reply_bot_text(update, prefs, phrase_keys.MESSENGER_HISTORY_SYNCED)
+        # /start welcome is ephemeral — not stored in chat history.
+        await reply_bot_text(update, prefs, phrase_keys.WELCOME)
 
     async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data = auth_func(update.effective_user.id)
@@ -272,6 +277,10 @@ def register_handlers(app: Application, config: dict, auth_func):
             incoming.has_image,
         )
 
+        messenger_synced = await sync_if_messenger_cleared(
+            db, context.bot, update.effective_user.id,
+        )
+
         session_id = str(uuid.uuid4())
         session_start = time.time()
         detected_intent = None
@@ -284,6 +293,9 @@ def register_handlers(app: Application, config: dict, auth_func):
         ctx_token = set_session_id(session_id)
 
         add_to_history(update, context, "user", history_text, update.message)
+        if messenger_synced:
+            # Sync ack is messenger-only; do not persist to Repertuarr transcript.
+            await reply_bot_text(update, prefs, phrase_keys.MESSENGER_HISTORY_SYNCED)
 
         try:
             if user_text and is_recommend_trigger(user_text, prefs):
@@ -1404,20 +1416,6 @@ def register_handlers(app: Application, config: dict, auth_func):
             )
 
 
-    async def clear_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Wipe the user's stored chat transcript and carousel state."""
-        user_data = auth_func(update.effective_user.id)
-        if not user_data:
-            return
-        context.user_data['user_info'] = user_data
-        removed = db.clear_chat(update.effective_user.id)
-        db.clear_user_carousels(update.effective_user.id)
-        db.clear_recent_recommendations(update.effective_user.id)
-        prefs = user_data.get('preferences', {})
-        text = get_phrase(prefs, phrase_keys.CLEAR_CHAT, removed=removed)
-        keyboard = build_recommend_keyboard(prefs)
-        await update.message.reply_text(text, reply_markup=keyboard)
-
     async def handle_edited_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Keep the stored transcript in sync when a user edits a message."""
         user_data = auth_func(update.effective_user.id)
@@ -1441,7 +1439,6 @@ def register_handlers(app: Application, config: dict, auth_func):
     # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("clear", clear_chat))
     app.add_handler(MessageHandler(
         (filters.PHOTO | (filters.TEXT & ~filters.COMMAND)) & filters.UpdateType.MESSAGE,
         handle_message,

@@ -121,10 +121,12 @@ def test_random_variant_selection():
     assert len(seen) >= 2
 
 
-def test_format_placeholders():
+def test_chat_maintenance_phrases():
     prefs = {"language": "en", "bot_style": "default"}
-    text = get_phrase(prefs, phrase_keys.CLEAR_CHAT, removed=5)
-    assert "5" in text
+    notify = get_phrase(prefs, phrase_keys.ADMIN_CLEAR_CHAT_NOTIFY)
+    synced = get_phrase(prefs, phrase_keys.MESSENGER_HISTORY_SYNCED)
+    assert "Clear history" in notify
+    assert "cleared" in synced.lower()
 
 
 def test_request_lifecycle_placeholders():

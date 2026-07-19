@@ -55,7 +55,8 @@ STATUS_SONARR_ONLINE = "status_sonarr_online"
 STATUS_SONARR_ERROR = "status_sonarr_error"
 STATUS_SONARR_UNREACHABLE = "status_sonarr_unreachable"
 STATUS_SONARR_NOT_CONFIGURED = "status_sonarr_not_configured"
-CLEAR_CHAT = "clear_chat"
+ADMIN_CLEAR_CHAT_NOTIFY = "admin_clear_chat_notify"
+MESSENGER_HISTORY_SYNCED = "messenger_history_synced"
 
 # Media type labels (lifecycle messages)
 MEDIA_TYPE_MOVIE = "media_type_movie"

@@ -362,6 +362,7 @@ async def start_webhook_server(
         users_config,
         messenger_name,
         recommendation_exclude_ttl_hours=config.get('recommendation_exclude_ttl_hours', 72),
+        bot_app=bot_app,
     )
     
     runner = web.AppRunner(app)

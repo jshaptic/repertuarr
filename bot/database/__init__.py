@@ -819,6 +819,56 @@ class Database(LogMixin, ChatMixin, RecentRecommendationsMixin, ServiceLogMixin)
 
         return [dict(row) for row in rows]
 
+    def clear_media_requests(self, user_id: int) -> int:
+        """Delete all media request rows for a Telegram user. Returns rows removed."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM media_requests WHERE telegram_id = ?",
+            (user_id,),
+        )
+        removed = cursor.rowcount
+        conn.commit()
+        conn.close()
+        logger.info("Cleared %s media requests for user %s", removed, user_id)
+        return removed
+
+    def clear_user_feedback(
+        self,
+        user_id: int,
+        *,
+        watched: Optional[bool] = None,
+        feedback: Optional[str] = None,
+        excluded: Optional[bool] = None,
+    ) -> int:
+        """Delete feedback rows for a user, optionally filtered by column values.
+
+        With no filters, deletes every feedback row for the user.
+        """
+        clauses = ["user_id = ?"]
+        params: list = [user_id]
+        if watched is not None:
+            clauses.append("watched = ?")
+            params.append(1 if watched else 0)
+        if feedback is not None:
+            clauses.append("feedback = ?")
+            params.append(self._normalize_feedback_value(feedback))
+        if excluded is not None:
+            clauses.append("excluded = ?")
+            params.append(1 if excluded else 0)
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM user_content_feedback WHERE " + " AND ".join(clauses),
+            params,
+        )
+        removed = cursor.rowcount
+        conn.commit()
+        conn.close()
+        logger.info("Cleared %s feedback rows for user %s", removed, user_id)
+        return removed
+
     def get_recent_feedback(self, limit: int = 50, user_id: Optional[int] = None) -> List[dict]:
         """Get recent user feedback for the admin UI"""
         conn = sqlite3.connect(self.db_path)

@@ -58,6 +58,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const isUserDetails = targetId === 'user-details';
         if (currentTabTitle) currentTabTitle.hidden = isUserDetails;
         if (userBreadcrumbs) userBreadcrumbs.hidden = !isUserDetails;
+        const userActionsMenu = document.getElementById('user-actions-menu');
+        if (userActionsMenu) {
+            userActionsMenu.hidden = !isUserDetails;
+            if (!isUserDetails) closeUserActionsMenu();
+        }
     }
 
     navItems.forEach(item => {
@@ -190,7 +195,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── User Details drill-down ──────────────────────────────────────
+    let currentDetailUserId = null;
+    let currentDetailUserName = null;
+
     async function showUserDetails(userId, userName) {
+        currentDetailUserId = userId;
+        currentDetailUserName = userName;
         switchTab('user-details', userName);
         currentTabSubtitle.textContent = 'User profile';
         if (breadcrumbCurrent) breadcrumbCurrent.textContent = userName;
@@ -208,6 +218,189 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function refreshUserDetails() {
+        if (currentDetailUserId == null) return;
+        await showUserDetails(currentDetailUserId, currentDetailUserName || String(currentDetailUserId));
+    }
+
+    async function postClear(path, body) {
+        const opts = { method: 'POST' };
+        if (body !== undefined) {
+            opts.headers = { 'Content-Type': 'application/json' };
+            opts.body = JSON.stringify(body);
+        }
+        const res = await fetch(path, opts);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || `Request failed (${res.status})`);
+        }
+        return data;
+    }
+
+    const confirmOverlay = document.getElementById('confirm-dialog');
+    const confirmTitleEl = document.getElementById('confirm-title');
+    const confirmMessageEl = document.getElementById('confirm-message');
+    const confirmOkBtn = document.getElementById('confirm-ok');
+    const confirmCancelBtn = document.getElementById('confirm-cancel');
+    let confirmResolver = null;
+
+    function closeConfirmDialog(result) {
+        if (!confirmOverlay) return;
+        confirmOverlay.hidden = true;
+        if (confirmResolver) {
+            const resolve = confirmResolver;
+            confirmResolver = null;
+            resolve(result);
+        }
+    }
+
+    function confirmClear(message, {
+        title = 'Confirm clear',
+        confirmLabel = 'Clear',
+        destructive = true,
+    } = {}) {
+        // In-page dialog: window.confirm is often suppressed in Electron/Cursor webviews.
+        if (!confirmOverlay || !confirmMessageEl || !confirmOkBtn) {
+            return Promise.resolve(false);
+        }
+        if (confirmTitleEl) confirmTitleEl.textContent = title;
+        confirmMessageEl.textContent = destructive
+            ? `${message}\n\nThis cannot be undone.`
+            : message;
+        confirmOkBtn.textContent = confirmLabel;
+        if (confirmCancelBtn) confirmCancelBtn.hidden = !destructive;
+        confirmOkBtn.classList.toggle('confirm-btn-danger', destructive);
+        confirmOkBtn.classList.toggle('confirm-btn-secondary', !destructive);
+        confirmOverlay.hidden = false;
+        confirmOkBtn.focus();
+        return new Promise((resolve) => {
+            confirmResolver = resolve;
+        });
+    }
+
+    if (confirmOkBtn) {
+        confirmOkBtn.addEventListener('click', () => closeConfirmDialog(true));
+    }
+    if (confirmCancelBtn) {
+        confirmCancelBtn.addEventListener('click', () => closeConfirmDialog(false));
+    }
+    if (confirmOverlay) {
+        confirmOverlay.addEventListener('click', (e) => {
+            if (e.target === confirmOverlay) closeConfirmDialog(false);
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && confirmOverlay && !confirmOverlay.hidden) {
+            e.stopPropagation();
+            closeConfirmDialog(false);
+        }
+    });
+
+    async function clearChatHistory() {
+        if (currentDetailUserId == null) return;
+        const ok = await confirmClear(
+            'Clear this user’s chat history on the server and ask them to clear the Telegram chat?',
+            { title: 'Clear chat history' },
+        );
+        if (!ok) return;
+        try {
+            await postClear(`/admin/api/users/${currentDetailUserId}/clear-chat`);
+            await refreshUserDetails();
+        } catch (error) {
+            console.error('Error clearing chat:', error);
+            await confirmClear(`Failed to clear chat: ${error.message}`, {
+                title: 'Clear failed',
+                confirmLabel: 'OK',
+                destructive: false,
+            });
+        }
+    }
+
+    async function clearFlagBucket(bucket) {
+        if (currentDetailUserId == null || !bucket) return;
+        const label = EXCLUSION_BUCKETS[bucket] || bucket;
+        const ok = await confirmClear(`Clear all “${label}” for this user?`, {
+            title: `Clear ${label}`,
+        });
+        if (!ok) return;
+        try {
+            await postClear(`/admin/api/users/${currentDetailUserId}/clear-flags`, { bucket });
+            modal.classList.remove('open');
+            await refreshUserDetails();
+        } catch (error) {
+            console.error('Error clearing flags:', error);
+            await confirmClear(`Failed to clear ${label}: ${error.message}`, {
+                title: 'Clear failed',
+                confirmLabel: 'OK',
+                destructive: false,
+            });
+        }
+    }
+
+    async function clearEverything() {
+        if (currentDetailUserId == null) return;
+        const ok = await confirmClear(
+            'Clear EVERYTHING for this user — chat history, carousels, recently shown, requested, watched, liked, disliked, and not interested?\n\nThe user will also be asked to clear the Telegram chat.',
+            { title: 'Clear everything' },
+        );
+        if (!ok) return;
+        try {
+            await postClear(`/admin/api/users/${currentDetailUserId}/clear-everything`);
+            modal.classList.remove('open');
+            await refreshUserDetails();
+        } catch (error) {
+            console.error('Error clearing everything:', error);
+            await confirmClear(`Failed to clear everything: ${error.message}`, {
+                title: 'Clear failed',
+                confirmLabel: 'OK',
+                destructive: false,
+            });
+        }
+    }
+
+    const clearChatBtn = document.getElementById('clear-chat-btn');
+    if (clearChatBtn) clearChatBtn.addEventListener('click', clearChatHistory);
+
+    const userActionsMenu = document.getElementById('user-actions-menu');
+    const userActionsMenuBtn = document.getElementById('user-actions-menu-btn');
+    const userActionsDropdown = document.getElementById('user-actions-dropdown');
+    const clearEverythingBtn = document.getElementById('clear-everything-btn');
+
+    function closeUserActionsMenu() {
+        if (!userActionsDropdown || !userActionsMenuBtn) return;
+        userActionsDropdown.hidden = true;
+        userActionsMenuBtn.setAttribute('aria-expanded', 'false');
+        if (userActionsMenu) userActionsMenu.classList.remove('open');
+    }
+
+    function toggleUserActionsMenu() {
+        if (!userActionsDropdown || !userActionsMenuBtn) return;
+        const willOpen = userActionsDropdown.hidden;
+        userActionsDropdown.hidden = !willOpen;
+        userActionsMenuBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (userActionsMenu) userActionsMenu.classList.toggle('open', willOpen);
+    }
+
+    if (userActionsMenuBtn) {
+        userActionsMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleUserActionsMenu();
+        });
+    }
+    if (clearEverythingBtn) {
+        clearEverythingBtn.addEventListener('click', () => {
+            closeUserActionsMenu();
+            clearEverything();
+        });
+    }
+    document.addEventListener('click', (e) => {
+        if (!userActionsMenu || userActionsMenu.hidden) return;
+        if (!userActionsMenu.contains(e.target)) closeUserActionsMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeUserActionsMenu();
+    });
+
     /** Render the full chat transcript as alternating user/assistant bubbles. */
     function renderChatTranscript(messages) {
         const container = document.getElementById('user-chat-transcript');
@@ -219,6 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (rows.length === 0) {
             container.innerHTML = '<div class="chat-empty">No stored messages for this user.</div>';
+            container.scrollTop = 0;
             return;
         }
 
@@ -297,6 +491,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sessionId) openSessionModal(sessionId);
             });
         });
+
+        // Newest messages are at the bottom; keep the viewport pinned there.
+        container.scrollTop = container.scrollHeight;
     }
 
     // Stat-card buckets shown on the user page (key -> modal title).
@@ -354,15 +551,29 @@ document.addEventListener('DOMContentLoaded', () => {
         setModalTabVisibility(false);
         setModalWide(true);
 
+        const label = EXCLUSION_BUCKETS[bucket] || 'Titles';
         modalMeta.innerHTML = isCooldown
             ? `
                 <div class="meta-item"><strong>Rule:</strong> recent recommendation cooldown</div>
                 <div class="meta-item"><strong>TTL:</strong> ${latestExclusions.ttl_hours || '—'}h</div>
                 <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
+                <button type="button" class="modal-clear-btn" data-modal-clear-bucket="${bucket}" ${items.length === 0 ? 'disabled' : ''}>
+                    Clear ${escapeHtml(label)}
+                </button>
             `
             : `
                 <div class="meta-item"><strong>Items:</strong> ${items.length}</div>
+                <button type="button" class="modal-clear-btn" data-modal-clear-bucket="${bucket}" ${items.length === 0 ? 'disabled' : ''}>
+                    Clear ${escapeHtml(label)}
+                </button>
             `;
+
+        const modalClearBtn = modalMeta.querySelector('[data-modal-clear-bucket]');
+        if (modalClearBtn) {
+            modalClearBtn.addEventListener('click', () => {
+                clearFlagBucket(modalClearBtn.getAttribute('data-modal-clear-bucket'));
+            });
+        }
 
         modalBody.innerHTML = '';
         const pane = document.createElement('div');

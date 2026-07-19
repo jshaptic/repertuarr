@@ -13,8 +13,11 @@ def register_admin_routes(
     users_config: list,
     messenger_name: str,
     recommendation_exclude_ttl_hours: int = 72,
+    bot_app=None,
 ):
     """Registers admin UI and API routes on the provided aiohttp app"""
+
+    from bot.admin_clear import register_admin_clear_routes
 
     exclude_ttl_seconds = int(recommendation_exclude_ttl_hours) * 3600
 
@@ -235,5 +238,9 @@ def register_admin_routes(
     
     # Serve static assets (CSS, JS)
     app.router.add_static('/admin/static', web_dir)
-    
+
+    register_admin_clear_routes(
+        app, db, users_config, messenger_name, bot_app,
+    )
+
     logger.info("Registered Admin UI routes")
