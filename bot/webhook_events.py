@@ -1,12 +1,14 @@
 """
-Helpers for Radarr/Sonarr webhook lifecycle events.
+Helpers for Radarr/Sonarr webhook lifecycle events and download-ready notices.
 
 The aiohttp route handlers in bot.webhook keep HTTP parsing and response logic,
-while this module owns request matching, grab state updates, and failure
-notifications for Arr events that are not final download-ready notifications.
+while this module owns request matching, grab state updates, failure
+notifications, and the shared "media is ready" Telegram notify path used by
+both media-server webhooks and the download monitor.
 """
 
 import logging
+from typing import Optional
 
 from .phrases import get_media_type_label, get_phrase
 from .phrases import keys as phrase_keys
@@ -132,3 +134,113 @@ async def notify_failed_requests(
             logger.info(f"Notified user {telegram_id} about failed request '{title}'")
         except Exception as e:
             logger.error(f"Failed to notify user {telegram_id} about failed request '{title}': {e}")
+
+
+async def notify_request_ready(
+    db,
+    bot_app,
+    request: dict,
+    prefs: dict,
+    media_server_client=None,
+    media_url: Optional[str] = None,
+    require_url: bool = False,
+) -> bool:
+    """
+    Notify a user that their requested title is ready to play.
+
+    Resolves a play URL via the media server when needed. When ``require_url``
+    is True (download-monitor path), a missing URL means "not ready yet" and
+    no notification is sent. Returns True when the request was marked notified.
+    """
+    telegram_id = request['telegram_id']
+    request_id = request['id']
+    title = request.get('title') or 'requested item'
+    media_type = request.get('media_type') or 'movie'
+    type_label = get_media_type_label(prefs, media_type)
+
+    if not media_url and media_server_client:
+        media_url = media_server_client.search_item(
+            title,
+            media_type,
+            tmdb_id=request.get('tmdb_id'),
+            tvdb_id=request.get('tvdb_id'),
+        )
+        logger.info(
+            "%s search URL for '%s': %s",
+            media_server_client.display_name,
+            title,
+            media_url,
+        )
+
+    if require_url and not media_url:
+        return False
+
+    if media_url and media_server_client:
+        text = get_phrase(
+            prefs,
+            phrase_keys.DOWNLOAD_READY,
+            title=title,
+            type=type_label,
+            url=media_url,
+            server=media_server_client.display_name,
+        )
+    else:
+        text = get_phrase(
+            prefs,
+            phrase_keys.DOWNLOAD_READY_NO_URL,
+            title=title,
+            type=type_label,
+        )
+
+    try:
+        await bot_app.bot.send_message(
+            chat_id=telegram_id,
+            text=text,
+            parse_mode='Markdown',
+        )
+        db.mark_request_notified(request_id)
+        logger.info(f"Notified user {telegram_id} about '{title}'")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to notify user {telegram_id} about '{title}': {e}")
+        return False
+
+
+async def notify_matching_requests(
+    db,
+    bot_app,
+    user_prefs_map: dict,
+    title: str,
+    media_type: str,
+    media_server_client=None,
+    tmdb_id: str = None,
+    tvdb_id: str = None,
+    media_url: str = None,
+):
+    """Match a downloaded item against active requests and notify each user."""
+    requests_found = db.find_pending_requests(title=title, tmdb_id=tmdb_id, tvdb_id=tvdb_id)
+
+    if not requests_found:
+        logger.info(f"No pending requests matched for '{title}'")
+        return
+
+    for req in requests_found:
+        prefs = user_prefs_map.get(
+            req['telegram_id'],
+            {'language': 'en', 'bot_style': 'default'},
+        )
+        # Prefer the request's stored title; fall back to webhook title.
+        notify_req = dict(req)
+        if not notify_req.get('title'):
+            notify_req['title'] = title
+        if not notify_req.get('media_type'):
+            notify_req['media_type'] = media_type
+        await notify_request_ready(
+            db=db,
+            bot_app=bot_app,
+            request=notify_req,
+            prefs=prefs,
+            media_server_client=media_server_client,
+            media_url=media_url,
+            require_url=False,
+        )

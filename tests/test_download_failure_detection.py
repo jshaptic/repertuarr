@@ -183,7 +183,7 @@ async def _exercise_monitor_no_candidates(tmp_path):
         "download_monitor": {"no_grab_after_minutes": 1},
     }
 
-    with patch("bot.download_monitor.make_service_request", side_effect=[
+    with patch("bot.download_monitor_arr.make_service_request", side_effect=[
         _response({"records": []}),
         _response([]),
     ]):
@@ -231,7 +231,7 @@ async def _exercise_monitor_download_started(tmp_path):
         }]
     }
 
-    with patch("bot.download_monitor.make_service_request", return_value=_response(queue_payload)):
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response(queue_payload)):
         await inspect_download_request(
             config,
             db,
@@ -286,7 +286,7 @@ async def _exercise_monitor_stalled_warning_waits_for_threshold(tmp_path):
         }]
     }
 
-    with patch("bot.download_monitor.make_service_request", return_value=_response(queue_payload)):
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response(queue_payload)):
         await inspect_download_request(
             config,
             db,
@@ -336,7 +336,7 @@ async def _exercise_monitor_stalled_warning_fails_after_threshold(tmp_path):
         }]
     }
 
-    with patch("bot.download_monitor.make_service_request", return_value=_response(queue_payload)):
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response(queue_payload)):
         await inspect_download_request(
             config,
             db,
@@ -385,7 +385,7 @@ async def _exercise_monitor_queue_blocked(tmp_path):
         }]
     }
 
-    with patch("bot.download_monitor.make_service_request", return_value=_response(queue_payload)):
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response(queue_payload)):
         await inspect_download_request(
             config,
             db,
@@ -404,3 +404,182 @@ async def _exercise_monitor_queue_blocked(tmp_path):
 
 def test_monitor_marks_queue_blocked_failed(tmp_path):
     asyncio.run(_exercise_monitor_queue_blocked(tmp_path))
+
+
+def _media_server_mock(url=None):
+    client = MagicMock()
+    client.display_name = "Plex"
+    client.search_item.return_value = url
+    return client
+
+
+async def _exercise_monitor_grabbed_found_on_media_server(tmp_path):
+    db = Database(db_path=str(tmp_path / "ready.db"))
+    request_id = db.add_media_request(
+        telegram_id=100,
+        title="Ready Movie",
+        media_type="movie",
+        tmdb_id="999",
+        arr_service="radarr",
+        arr_instance="radarr-main",
+        arr_id=99,
+    )
+    db.mark_request_grabbed(request_id, download_id="download-99")
+    request = db.get_media_request(request_id)
+    bot_app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    config = {
+        "radarrs": {"radarr-main": {"url": "http://radarr.local", "key": "key"}},
+    }
+    media_server = _media_server_mock(url="http://plex.local/web/Ready%20Movie")
+
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response({"records": []})):
+        await inspect_download_request(
+            config,
+            db,
+            bot_app,
+            request,
+            {"language": "en", "bot_style": "default"},
+            datetime.now(),
+            media_server_client=media_server,
+        )
+
+    media_server.search_item.assert_called_once_with(
+        "Ready Movie", "movie", tmdb_id="999", tvdb_id=None,
+    )
+    bot_app.bot.send_message.assert_awaited_once()
+    assert "Ready Movie" in bot_app.bot.send_message.await_args.kwargs["text"]
+    assert "Plex" in bot_app.bot.send_message.await_args.kwargs["text"]
+    request = db.get_media_request(request_id)
+    assert request["status"] == "notified"
+
+
+def test_monitor_notifies_when_grabbed_found_on_media_server(tmp_path):
+    asyncio.run(_exercise_monitor_grabbed_found_on_media_server(tmp_path))
+
+
+async def _exercise_monitor_grabbed_missing_on_media_server(tmp_path):
+    db = Database(db_path=str(tmp_path / "missing.db"))
+    request_id = db.add_media_request(
+        telegram_id=100,
+        title="Missing Movie",
+        media_type="movie",
+        tmdb_id="1001",
+        arr_service="radarr",
+        arr_instance="radarr-main",
+        arr_id=101,
+    )
+    db.mark_request_grabbed(request_id, download_id="download-101")
+    request = db.get_media_request(request_id)
+    bot_app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    config = {
+        "radarrs": {"radarr-main": {"url": "http://radarr.local", "key": "key"}},
+    }
+    media_server = _media_server_mock(url=None)
+
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response({"records": []})):
+        await inspect_download_request(
+            config,
+            db,
+            bot_app,
+            request,
+            {"language": "en", "bot_style": "default"},
+            datetime.now(),
+            media_server_client=media_server,
+        )
+
+    media_server.search_item.assert_called_once()
+    bot_app.bot.send_message.assert_not_awaited()
+    request = db.get_media_request(request_id)
+    assert request["status"] == "grabbed"
+    assert request["last_checked_at"] is not None
+
+
+def test_monitor_keeps_grabbed_when_media_server_misses(tmp_path):
+    asyncio.run(_exercise_monitor_grabbed_missing_on_media_server(tmp_path))
+
+
+async def _exercise_monitor_grabbed_still_queued_skips_media_server(tmp_path):
+    db = Database(db_path=str(tmp_path / "queued.db"))
+    request_id = db.add_media_request(
+        telegram_id=100,
+        title="Queued Movie",
+        media_type="movie",
+        tmdb_id="1002",
+        arr_service="radarr",
+        arr_instance="radarr-main",
+        arr_id=102,
+    )
+    db.mark_request_grabbed(request_id, download_id="download-102")
+    request = db.get_media_request(request_id)
+    bot_app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    config = {
+        "radarrs": {"radarr-main": {"url": "http://radarr.local", "key": "key"}},
+    }
+    media_server = _media_server_mock(url="http://plex.local/should-not-matter")
+    queue_payload = {
+        "records": [{
+            "movieId": 102,
+            "downloadId": "download-102",
+            "trackedDownloadState": "downloading",
+        }]
+    }
+
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response(queue_payload)):
+        await inspect_download_request(
+            config,
+            db,
+            bot_app,
+            request,
+            {"language": "en", "bot_style": "default"},
+            datetime.now(),
+            media_server_client=media_server,
+        )
+
+    media_server.search_item.assert_not_called()
+    bot_app.bot.send_message.assert_not_awaited()
+    request = db.get_media_request(request_id)
+    assert request["status"] == "grabbed"
+
+
+def test_monitor_skips_media_server_while_still_queued(tmp_path):
+    asyncio.run(_exercise_monitor_grabbed_still_queued_skips_media_server(tmp_path))
+
+
+async def _exercise_monitor_grabbed_no_media_server_client(tmp_path):
+    db = Database(db_path=str(tmp_path / "no_client.db"))
+    request_id = db.add_media_request(
+        telegram_id=100,
+        title="No Client Movie",
+        media_type="movie",
+        tmdb_id="1003",
+        arr_service="radarr",
+        arr_instance="radarr-main",
+        arr_id=103,
+    )
+    db.mark_request_grabbed(request_id, download_id="download-103")
+    request = db.get_media_request(request_id)
+    bot_app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+    config = {
+        "radarrs": {"radarr-main": {"url": "http://radarr.local", "key": "key"}},
+    }
+
+    with patch("bot.download_monitor_arr.make_service_request", return_value=_response({"records": []})) as mock_req:
+        await inspect_download_request(
+            config,
+            db,
+            bot_app,
+            request,
+            {"language": "en", "bot_style": "default"},
+            datetime.now(),
+            media_server_client=None,
+        )
+
+    mock_req.assert_called_once()
+    bot_app.bot.send_message.assert_not_awaited()
+    request = db.get_media_request(request_id)
+    assert request["status"] == "grabbed"
+    assert request["last_checked_at"] is not None
+
+
+def test_monitor_grabbed_without_media_server_only_marks_checked(tmp_path):
+    asyncio.run(_exercise_monitor_grabbed_no_media_server_client(tmp_path))

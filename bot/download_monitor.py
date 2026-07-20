@@ -6,6 +6,11 @@ interaction, but they do not emit an event when an automatic search finds no
 acceptable candidates. This module periodically inspects active media requests,
 queries the relevant Arr API, and notifies the requesting Telegram user once
 when a request appears unavailable or blocked.
+
+When a media server (Plex/Jellyfin) is configured, grabbed requests whose Arr
+queue is empty are also searched on the media server. A hit triggers the same
+download-ready notification as a library webhook — a fallback when Plex
+library.new (or similar) never fires.
 """
 
 import asyncio
@@ -13,10 +18,18 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
+from bot.download_monitor_arr import (
+    first_download_id,
+    has_acceptable_release,
+    queue_block_reason,
+    queue_records,
+    release_candidates,
+    resolve_arr,
+)
 from bot.phrases import get_media_type_label, get_phrase
 from bot.phrases import keys as phrase_keys
-from bot.service_request import make_service_request
 from bot.telegram_notify import ensure_request_queued, send_lifecycle_message
+from bot.webhook_events import notify_request_ready
 
 logger = logging.getLogger(__name__)
 
@@ -60,96 +73,6 @@ def _build_user_prefs_map(users_config: list, messenger_name: str) -> dict:
     return user_prefs_map
 
 
-def _resolve_arr(config: dict, request: dict) -> tuple[str, str]:
-    service = request.get('arr_service')
-    instance_name = request.get('arr_instance')
-    instances = config.get('radarrs' if service == 'radarr' else 'sonarrs', {})
-    instance = instances.get(instance_name) if instance_name else None
-    if not instance:
-        raise ValueError(f"No {service} instance configured for request {request.get('id')}")
-    return instance.get('url'), instance.get('key')
-
-
-def _request_headers(api_key: str) -> dict:
-    return {'X-Api-Key': api_key}
-
-
-def _queue_records(db, request: dict, base_url: str, api_key: str) -> list:
-    response = make_service_request(
-        db,
-        request['arr_service'],
-        'GET',
-        f"{base_url}/api/v3/queue",
-        headers=_request_headers(api_key),
-        params={'page': 1, 'pageSize': 250},
-    )
-    response.raise_for_status()
-    payload = response.json()
-    records = payload if isinstance(payload, list) else payload.get('records', [])
-    arr_id = int(request['arr_id'])
-
-    if request['arr_service'] == 'radarr':
-        return [record for record in records if record.get('movieId') == arr_id]
-    return [record for record in records if record.get('seriesId') == arr_id]
-
-
-def _first_download_id(records: list) -> Optional[str]:
-    for record in records:
-        download_id = record.get('downloadId')
-        if download_id:
-            return str(download_id)
-    return None
-
-
-def _queue_block_reason(records: list) -> Optional[str]:
-    blocked_states = {'importBlocked', 'importPending'}
-    bad_statuses = {'warning', 'error', 'failed'}
-
-    for record in records:
-        tracked_state = record.get('trackedDownloadState')
-        tracked_status = record.get('trackedDownloadStatus')
-        status = record.get('status')
-        if tracked_state in blocked_states or tracked_status in bad_statuses or status in bad_statuses:
-            messages = []
-            error_message = record.get('errorMessage')
-            if error_message:
-                messages.append(error_message)
-            for status_message in record.get('statusMessages') or []:
-                title = status_message.get('title')
-                if title:
-                    messages.append(title)
-                messages.extend(status_message.get('messages') or [])
-            return "; ".join(messages) or tracked_state or tracked_status or status
-    return None
-
-
-def _release_candidates(db, request: dict, base_url: str, api_key: str) -> list:
-    params = {'movieId': request['arr_id']}
-    if request['arr_service'] == 'sonarr':
-        params = {'seriesId': request['arr_id']}
-
-    response = make_service_request(
-        db,
-        request['arr_service'],
-        'GET',
-        f"{base_url}/api/v3/release",
-        headers=_request_headers(api_key),
-        params=params,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, list) else []
-
-
-def _has_acceptable_release(releases: list) -> bool:
-    for release in releases:
-        if release.get('approved') is True:
-            return True
-        if 'approved' not in release and not release.get('rejections'):
-            return True
-    return False
-
-
 async def _notify_failure(
     bot_app,
     db,
@@ -187,14 +110,22 @@ async def _mark_download_started(
     db.mark_request_grabbed(request['id'], download_id=download_id)
 
 
-async def inspect_download_request(config: dict, db, bot_app, request: dict, prefs: dict, now: datetime) -> None:
+async def inspect_download_request(
+    config: dict,
+    db,
+    bot_app,
+    request: dict,
+    prefs: dict,
+    now: datetime,
+    media_server_client=None,
+) -> None:
     monitor_config = _monitor_config(config)
-    base_url, api_key = _resolve_arr(config, request)
+    base_url, api_key = resolve_arr(config, request)
     if not base_url or not api_key:
         raise ValueError(f"Incomplete Arr config for request {request.get('id')}")
 
-    records = _queue_records(db, request, base_url, api_key)
-    block_reason = _queue_block_reason(records)
+    records = queue_records(db, request, base_url, api_key)
+    block_reason = queue_block_reason(records)
     if block_reason and _request_age(request, now) >= timedelta(hours=monitor_config['stalled_after_hours']):
         await _notify_failure(
             bot_app,
@@ -212,7 +143,7 @@ async def inspect_download_request(config: dict, db, bot_app, request: dict, pre
             db.mark_request_checked(request['id'])
             return
 
-        download_id = _first_download_id(records)
+        download_id = first_download_id(records)
         if download_id and request.get('status') == 'pending':
             await _mark_download_started(bot_app, db, request, prefs, download_id)
             return
@@ -222,9 +153,23 @@ async def inspect_download_request(config: dict, db, bot_app, request: dict, pre
         db.mark_request_checked(request['id'])
         return
 
+    if request.get('status') == 'grabbed' and media_server_client:
+        notified = await notify_request_ready(
+            db=db,
+            bot_app=bot_app,
+            request=request,
+            prefs=prefs,
+            media_server_client=media_server_client,
+            require_url=True,
+        )
+        if notified:
+            return
+        db.mark_request_checked(request['id'])
+        return
+
     if request.get('status') == 'pending' and _request_age(request, now) >= timedelta(minutes=monitor_config['no_grab_after_minutes']):
-        releases = _release_candidates(db, request, base_url, api_key)
-        if not _has_acceptable_release(releases):
+        releases = release_candidates(db, request, base_url, api_key)
+        if not has_acceptable_release(releases):
             reason = 'no_candidates' if not releases else 'all_candidates_rejected'
             await _notify_failure(
                 bot_app,
@@ -241,32 +186,77 @@ async def inspect_download_request(config: dict, db, bot_app, request: dict, pre
     db.mark_request_checked(request['id'])
 
 
-async def check_download_requests(config: dict, db, bot_app, users_config: list, messenger_name: str) -> None:
+async def check_download_requests(
+    config: dict,
+    db,
+    bot_app,
+    users_config: list,
+    messenger_name: str,
+    media_server_client=None,
+) -> None:
     user_prefs_map = _build_user_prefs_map(users_config, messenger_name)
     now = datetime.now()
 
     for request in db.get_download_monitor_candidates():
         prefs = user_prefs_map.get(request['telegram_id'], {'language': 'en', 'bot_style': 'default'})
         try:
-            await inspect_download_request(config, db, bot_app, request, prefs, now)
+            await inspect_download_request(
+                config,
+                db,
+                bot_app,
+                request,
+                prefs,
+                now,
+                media_server_client=media_server_client,
+            )
         except Exception as exc:
             db.mark_request_checked(request['id'])
             logger.error("Download monitor failed for request %s: %s", request.get('id'), exc)
 
 
-async def run_download_monitor(config: dict, db, bot_app, users_config: list, messenger_name: str) -> None:
+async def run_download_monitor(
+    config: dict,
+    db,
+    bot_app,
+    users_config: list,
+    messenger_name: str,
+    media_server_client=None,
+) -> None:
     monitor_config = _monitor_config(config)
     interval = int(monitor_config['poll_interval_minutes']) * 60
     logger.info("Download monitor started with %ss interval", interval)
 
     while True:
-        await check_download_requests(config, db, bot_app, users_config, messenger_name)
+        await check_download_requests(
+            config,
+            db,
+            bot_app,
+            users_config,
+            messenger_name,
+            media_server_client=media_server_client,
+        )
         await asyncio.sleep(interval)
 
 
-def start_download_monitor(config: dict, db, bot_app, users_config: list, messenger_name: str):
+def start_download_monitor(
+    config: dict,
+    db,
+    bot_app,
+    users_config: list,
+    messenger_name: str,
+    media_server_client=None,
+):
     monitor_config = _monitor_config(config)
     if not monitor_config.get('enabled', True):
         logger.info("Download monitor disabled")
         return None
-    return asyncio.create_task(run_download_monitor(config, db, bot_app, users_config, messenger_name))
+    return asyncio.create_task(
+        run_download_monitor(
+            config,
+            db,
+            bot_app,
+            users_config,
+            messenger_name,
+            media_server_client=media_server_client,
+        )
+    )

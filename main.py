@@ -204,6 +204,7 @@ async def main():
             bot_app=app_telegram,
             users_config=users_list,
             messenger_name=messenger_name,
+            media_server_client=media_server_client,
         )
 
     if not app_telegram:
