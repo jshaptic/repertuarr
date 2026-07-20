@@ -1,5 +1,15 @@
+"""
+Entrypoint for homelab-bot.
+
+Loads configuration, starts the Telegram bot (polling), webhook server,
+and download monitor. Config path defaults to ``config.yaml`` in the
+working directory, or ``CONFIG_PATH`` when set (useful for Docker/Unraid
+volume mounts such as ``/config/config.yaml``).
+"""
+
 import asyncio
 import logging
+import os
 import yaml
 from telegram.ext import ApplicationBuilder
 from bot import telegram_bot
@@ -15,10 +25,17 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
+DEFAULT_CONFIG_PATH = "config.yaml"
+
 
 def _by_name(items: list) -> dict:
     """Index a list of dicts by their 'name' field."""
     return {item['name']: item for item in items}
+
+
+def _resolve_config_path() -> str:
+    """Return config file path from CONFIG_PATH env, else default."""
+    return os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
 
 
 async def run_telegram_bot(messenger_conf, bot_config, auth_func):
@@ -51,12 +68,13 @@ async def run_telegram_bot(messenger_conf, bot_config, auth_func):
 
 
 async def main():
-    # Load Config
+    config_path = _resolve_config_path()
+    logger.info("Loading config from %s", config_path)
     try:
-        with open("config.yaml", "r") as f:
+        with open(config_path, "r") as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
-        logger.error("config.yaml not found!")
+        logger.error("Config file not found: %s", config_path)
         return
 
     # Index named sections for quick lookup
@@ -108,7 +126,7 @@ async def main():
 
     bot_section = config.get('bot')
     if not bot_section:
-        raise ValueError("config.yaml must define a 'bot' section")
+        raise ValueError(f"{config_path} must define a 'bot' section")
     ttl_hours = bot_section.get('recommendation_exclude_ttl_hours')
     if not isinstance(ttl_hours, (int, float)) or ttl_hours <= 0:
         raise ValueError(
