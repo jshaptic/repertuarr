@@ -2,13 +2,14 @@
 
 ## Snapshot
 **Date:** 2026-07-20
-**Goal:** `[USER]` Docker/Unraid: specify config file path via env.
-**Now:** `[CODE]` `CONFIG_PATH` env supported; image default `/config/config.yaml`.
-**Next:** `[USER]` On Unraid: map appdata → `/config`, set/confirm `CONFIG_PATH`.
+**Goal:** `[USER]` Docker/Unraid: specify config path, webhook port, and web UI port via env.
+**Now:** `[CODE]` `CONFIG_PATH`, `WEBHOOK_PORT`, `WEB_UI_PORT` supported (UI may share or split ports).
+**Next:** `[USER]` On Unraid: map ports; set `WEB_UI_PORT` if admin should differ from webhooks.
 **Open Questions:** None.
 
 ## Done (recent)
-- `[CODE]` 2026-07-20 `CONFIG_PATH` env in `main.py`; Dockerfile default `/config/config.yaml` for Unraid volume mounts.
+- `[CODE]` 2026-07-20 `WEB_UI_PORT`/`bot.web_ui_port`: dedicated admin listener when ≠ webhook port; else shared (compat).
+- `[CODE]` 2026-07-20 Docker env: `CONFIG_PATH` (default `/config/config.yaml`) + `WEBHOOK_PORT` (default 8585, overrides `bot.webhook_port`).
 - `[CODE]` 2026-07-19 Chat/flags maintenance: `bot/chat_maintenance.py`, `bot/admin_clear.py`; DB clears for feedback/requests; admin UI clear buttons; messenger `copy_message` probe; removed `/clear`; tests `tests/test_chat_maintenance.py`.
 - `[CODE]` 2026-07-19 Multi-title/URL ADD_MEDIA: `AddMediaItem`/`ListExtractResponse`; intent prompt URL+multi rules; `bot/list_extractor.py` + `list_extract.mustache`; `bot/add_media.py` normalize/resolve; carousel `batch` column + Add all; tests `tests/test_add_media.py`.
 - `[CODE]` 2026-07-08 Telegram image support rebased: `bot/telegram_image.py`; vision intent + multimodal inquiry/recommend; `IntentResponse.image_description`; `tests/test_telegram_image.py`.
@@ -18,18 +19,17 @@
 ## Working Set
 - `main.py`
 - `Dockerfile`
+- `bot/webhook.py`
+- `bot/admin_ui.py`
 - `bot/chat_maintenance.py`
 - `bot/admin_clear.py`
 - `bot/telegram_bot.py`
 - `bot/database/chat.py`
 - `bot/database/__init__.py`
-- `bot/web/index.html`
-- `bot/web/app.js`
-- `bot/phrases/keys.py`
 - `tests/test_chat_maintenance.py`
 
 ## Decisions
-- `D024 ACTIVE:` `[USER]` 2026-07-20 Config path via `CONFIG_PATH` env (Docker default `/config/config.yaml`); local default remains `config.yaml`.
+- `D024 ACTIVE:` `[USER]` 2026-07-20 Docker env: `CONFIG_PATH`; `WEBHOOK_PORT` / `bot.webhook_port`; `WEB_UI_PORT` / `bot.web_ui_port` (defaults to webhook port; separate listener when different).
 - `D023 ACTIVE:` `[USER]` 2026-07-19 Admin clear chat = wipe transcript+carousels+recently shown + Telegram notify to clear messenger UI. Messenger-clear detect uses same wipe scope. `/clear` command removed. Per-bucket + master clear for flagged titles (requested = DB only).
 - `D022 ACTIVE:` `[USER]` 2026-07-19 URL list titles via LLM + native `web_search` list_extract (not HTML scrape / site APIs). Multi-title UX: one best-match carousel + Add all; single title keeps top-5 search carousel.
 - `D001 ACTIVE:` Use `INQUIRY` as the intent identifier.

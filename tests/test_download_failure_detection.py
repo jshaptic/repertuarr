@@ -97,7 +97,7 @@ async def _exercise_webhook_events(tmp_path):
         "preferences": {"language": "en", "bot_style": "default"},
     }]
     port = _free_port()
-    runner = await start_webhook_server(
+    runners = await start_webhook_server(
         config={"webhook_port": port},
         db=db,
         media_server_client=None,
@@ -155,7 +155,8 @@ async def _exercise_webhook_events(tmp_path):
         assert request["failure_reason"] == "manual_interaction_required"
         assert "Example.Movie.2026.1080p" in request["failure_detail"]
     finally:
-        await runner.cleanup()
+        for runner in runners:
+            await runner.cleanup()
 
 
 def test_webhook_grab_and_manual_interaction_required(tmp_path):
