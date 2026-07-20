@@ -11,6 +11,7 @@ from aiohttp import ClientSession
 
 from bot.database import Database
 from bot.download_monitor import inspect_download_request
+from bot import webhook as webhook_mod
 from bot.webhook import start_webhook_server
 
 
@@ -97,14 +98,15 @@ async def _exercise_webhook_events(tmp_path):
         "preferences": {"language": "en", "bot_style": "default"},
     }]
     port = _free_port()
-    runners = await start_webhook_server(
-        config={"webhook_port": port},
-        db=db,
-        media_server_client=None,
-        bot_app=bot_app,
-        users_config=users,
-        messenger_name="telegram-main",
-    )
+    with patch.object(webhook_mod, "LISTEN_PORT", port):
+        runner = await start_webhook_server(
+            config={},
+            db=db,
+            media_server_client=None,
+            bot_app=bot_app,
+            users_config=users,
+            messenger_name="telegram-main",
+        )
 
     try:
         request_id = db.add_media_request(
@@ -155,8 +157,7 @@ async def _exercise_webhook_events(tmp_path):
         assert request["failure_reason"] == "manual_interaction_required"
         assert "Example.Movie.2026.1080p" in request["failure_detail"]
     finally:
-        for runner in runners:
-            await runner.cleanup()
+        await runner.cleanup()
 
 
 def test_webhook_grab_and_manual_interaction_required(tmp_path):

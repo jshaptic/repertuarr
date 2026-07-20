@@ -5,10 +5,14 @@ from .phrases import get_media_type_label, get_phrase
 from .phrases import keys as phrase_keys
 from .media_server import MediaServerClient
 from .plex import PlexClient
-from .admin_ui import register_admin_routes, start_admin_server
+from .admin_ui import register_admin_routes
 from .webhook_events import build_user_prefs_map, mark_grabbed, notify_failed_requests
 
 logger = logging.getLogger(__name__)
+
+# Fixed listen port for webhooks + admin UI (not configurable).
+LISTEN_PORT = 8585
+
 
 async def start_webhook_server(
     config: dict,
@@ -19,8 +23,8 @@ async def start_webhook_server(
     messenger_name: str,
 ):
     """
-    Start an aiohttp web server that receives Radarr/Sonarr and media-server
-    (Jellyfin or Plex) webhooks.
+    Start an aiohttp server on port 8585 for Radarr/Sonarr/media-server
+    webhooks and the admin UI (/admin).
 
     Notification strategy:
       - If a media server is configured: Radarr/Sonarr webhooks are ignored for
@@ -28,15 +32,8 @@ async def start_webhook_server(
         server webhook fires when the item is actually scanned into the library.
       - If no media server is configured: Radarr/Sonarr webhooks notify directly.
 
-    When ``web_ui_port`` equals ``webhook_port`` (default), the admin UI is
-    mounted on the same server. When they differ, a second listener is started
-    for the admin UI only.
-
-    Returns a list of AppRunners (caller is responsible for cleanup).
+    Returns the AppRunner (caller is responsible for cleanup).
     """
-    port = config.get('webhook_port', 8585)
-    web_ui_port = config.get('web_ui_port', port)
-
     user_prefs_map = build_user_prefs_map(users_config, messenger_name)
 
     # ── Radarr ────────────────────────────────────────────────────────
@@ -360,34 +357,19 @@ async def start_webhook_server(
     elif media_server_client is not None:
         app.router.add_post('/webhook/jellyfin', handle_jellyfin)
     
-    # Register Admin UI on this server when ports are shared
-    if web_ui_port == port:
-        register_admin_routes(
-            app,
-            db,
-            users_config,
-            messenger_name,
-            recommendation_exclude_ttl_hours=config.get('recommendation_exclude_ttl_hours', 72),
-            bot_app=bot_app,
-        )
+    register_admin_routes(
+        app,
+        db,
+        users_config,
+        messenger_name,
+        recommendation_exclude_ttl_hours=config.get('recommendation_exclude_ttl_hours', 72),
+        bot_app=bot_app,
+    )
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, '0.0.0.0', LISTEN_PORT)
     await site.start()
+    logger.info("HTTP server (webhooks + admin UI) listening on port %s", LISTEN_PORT)
 
-    runners = [runner]
-    logger.info(f"Webhook server listening on port {port}")
-
-    if web_ui_port != port:
-        admin_runner = await start_admin_server(
-            db=db,
-            users_config=users_config,
-            messenger_name=messenger_name,
-            recommendation_exclude_ttl_hours=config.get('recommendation_exclude_ttl_hours', 72),
-            bot_app=bot_app,
-            port=web_ui_port,
-        )
-        runners.append(admin_runner)
-
-    return runners
+    return runner

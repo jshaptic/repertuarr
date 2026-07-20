@@ -2,8 +2,7 @@
 Admin web UI and JSON API routes for homelab-bot.
 
 Registers ``/admin`` (static UI) and ``/admin/api/*`` handlers on an aiohttp
-app. When the web UI listens on a different port than webhooks,
-``start_admin_server`` binds a dedicated listener.
+app (shared with webhooks on port 8585).
 """
 
 import os
@@ -14,32 +13,6 @@ import logging
 from bot.version import __version__
 
 logger = logging.getLogger(__name__)
-
-
-async def start_admin_server(
-    db,
-    users_config: list,
-    messenger_name: str,
-    port: int,
-    recommendation_exclude_ttl_hours: int = 72,
-    bot_app=None,
-):
-    """Start a dedicated aiohttp listener for the admin UI. Returns AppRunner."""
-    app = web.Application()
-    register_admin_routes(
-        app,
-        db,
-        users_config,
-        messenger_name,
-        recommendation_exclude_ttl_hours=recommendation_exclude_ttl_hours,
-        bot_app=bot_app,
-    )
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    logger.info(f"Admin UI listening on port {port}")
-    return runner
 
 
 def register_admin_routes(

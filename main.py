@@ -1,13 +1,11 @@
 """
 Entrypoint for homelab-bot.
 
-Loads configuration, starts the Telegram bot (polling), HTTP servers
-(webhooks + admin UI), and download monitor.
+Loads configuration, starts the Telegram bot (polling), HTTP server
+(webhooks + admin UI on 8585), and download monitor.
 
-Docker/Unraid env overrides:
-  CONFIG_PATH   — config file (default: config.yaml; image: /config/config.yaml)
-  WEBHOOK_PORT  — Radarr/Sonarr/media-server webhooks (default: bot.webhook_port or 8585)
-  WEB_UI_PORT   — admin UI (default: bot.web_ui_port, else same as webhook port)
+Docker/Unraid env:
+  CONFIG_PATH — config file (default: config.yaml; image: /config/config.yaml)
 """
 
 import asyncio
@@ -29,7 +27,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = "config.yaml"
-DEFAULT_WEBHOOK_PORT = 8585
 
 
 def _by_name(items: list) -> dict:
@@ -40,34 +37,6 @@ def _by_name(items: list) -> dict:
 def _resolve_config_path() -> str:
     """Return config file path from CONFIG_PATH env, else default."""
     return os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
-
-
-def _resolve_port(
-    *,
-    env_name: str,
-    config_key: str,
-    bot_section: dict,
-    default: int,
-) -> int:
-    """Resolve a TCP port from env, then config key, then default."""
-    env_port = os.environ.get(env_name)
-    if env_port is not None:
-        try:
-            port = int(env_port)
-        except ValueError as exc:
-            raise ValueError(
-                f"{env_name} must be an integer, got {env_port!r}"
-            ) from exc
-    elif config_key in bot_section:
-        port = bot_section[config_key]
-    else:
-        port = default
-
-    if not isinstance(port, int) or not (1 <= port <= 65535):
-        raise ValueError(
-            f"{env_name}/{config_key} must be an integer 1-65535, got {port!r}"
-        )
-    return port
 
 
 async def run_telegram_bot(messenger_conf, bot_config, auth_func):
@@ -184,20 +153,6 @@ async def main():
         raise ValueError(
             "bot.add_media_max_titles must be a positive integer"
         )
-    webhook_port = _resolve_port(
-        env_name="WEBHOOK_PORT",
-        config_key="webhook_port",
-        bot_section=bot_section,
-        default=DEFAULT_WEBHOOK_PORT,
-    )
-    web_ui_port = _resolve_port(
-        env_name="WEB_UI_PORT",
-        config_key="web_ui_port",
-        bot_section=bot_section,
-        default=webhook_port,
-    )
-    logger.info("Webhook listen port: %s", webhook_port)
-    logger.info("Web UI listen port: %s", web_ui_port)
 
     bot_config = {
         'sonarr_url': first_sonarr.get('url'),
@@ -205,8 +160,6 @@ async def main():
         'radarr_url': first_radarr.get('url'),
         'radarr_key': first_radarr.get('key'),
         'media_server': first_media_server,
-        'webhook_port': webhook_port,
-        'web_ui_port': web_ui_port,
         'recommendation_exclude_ttl_hours': int(ttl_hours),
         'recommendation_carousel_count': carousel_count,
         'custom_pool_candidates': custom_pool_candidates,
@@ -229,15 +182,15 @@ async def main():
         logger.warning("No TMDB config or bearer_token found. TMDB discovery will be disabled.")
 
     app_telegram = None
-    http_runners = []
+    http_runner = None
     download_monitor_task = None
 
     result = await run_telegram_bot(telegram_conf, bot_config, check_telegram_auth)
     if result:
         app_telegram, media_db, media_server_client = result
 
-        # Start webhook (+ admin UI) HTTP server(s)
-        http_runners = await start_webhook_server(
+        # Start webhook + admin UI HTTP server
+        http_runner = await start_webhook_server(
             config=bot_config,
             db=media_db,
             media_server_client=media_server_client,
@@ -273,10 +226,9 @@ async def main():
                 await download_monitor_task
             except asyncio.CancelledError:
                 logger.info("Download monitor stopped.")
-        for runner in http_runners:
-            await runner.cleanup()
-        if http_runners:
-            logger.info("HTTP server(s) stopped.")
+        if http_runner:
+            await http_runner.cleanup()
+            logger.info("HTTP server stopped.")
         if app_telegram:
             await app_telegram.updater.stop()
             await app_telegram.stop()

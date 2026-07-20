@@ -1,14 +1,10 @@
 # Docker image for homelab-bot.
 #
 # Config: set CONFIG_PATH to the mounted config file (default: /config/config.yaml).
-# Ports:
-#   WEBHOOK_PORT — Radarr/Sonarr/media-server webhooks (default: 8585 / bot.webhook_port)
-#   WEB_UI_PORT  — admin UI at /admin (default: same as webhook port / bot.web_ui_port)
+# Port (fixed): 8585 — webhooks + admin UI (/admin).
 # Unraid example: map /mnt/user/appdata/homelab-bot -> /config
 #                 Variable CONFIG_PATH=/config/config.yaml
-#                 Variable WEBHOOK_PORT=8585
-#                 Variable WEB_UI_PORT=8586   # optional; omit to share webhook port
-#                 Port mappings for each listen port you expose
+#                 Port mapping: host:8585 -> container:8585
 #
 # Persist SQLite too: map a host path to /app/data (DB defaults to data/media_bot.db).
 
